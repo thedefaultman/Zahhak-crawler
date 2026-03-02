@@ -15,6 +15,9 @@ Thumbs.db
 *.swp
 *.swo
 
+# Claude
+.claude/
+
 # Secrets / local config
 .env
 *.key

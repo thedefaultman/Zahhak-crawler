@@ -1,11 +1,6 @@
-// ===== Browsing Capture — Background Service Worker =====
-// Orchestrates captures, AI enhancement, IndexedDB storage, and chrome.downloads export.
-// No native host required — fully self-contained.
 
-// Load JSZip for ZIP export
 importScripts('../lib/jszip.min.js');
 
-// ===== State =====
 let isActive = false;
 let useAI = false;
 let apiSettings = {};
@@ -14,7 +9,6 @@ let captureQueue = [];
 let isProcessingQueue = false;
 var settingsReady = null; // Promise that resolves when settings are loaded (var to avoid TDZ)
 
-// ===== Export Progress State =====
 let exportProgress = {
   active: false,
   phase: '',       // 'naming' | 'processing' | 'sanitizing' | 'writing' | 'done' | 'error'
@@ -26,7 +20,6 @@ let exportProgress = {
 
 function broadcastExportProgress() {
   const msg = { type: 'EXPORT_PROGRESS', ...exportProgress };
-  // Update badge
   if (exportProgress.active) {
     const pct = exportProgress.total > 0
       ? Math.round((exportProgress.current / exportProgress.total) * 100)
@@ -36,12 +29,11 @@ function broadcastExportProgress() {
   } else {
     chrome.action.setBadgeText({ text: isActive ? 'ON' : '' });
   }
-  // Try to send to popup (may not be open — that's fine)
   try { chrome.runtime.sendMessage(msg).catch(() => {}); } catch (e) {}
 }
 
 async function startBackgroundExport(mode, generateQuestions, sanitize) {
-  if (exportProgress.active) return; // already exporting
+  if (exportProgress.active) return;
   exportProgress = { active: true, phase: 'naming', current: 0, total: 0, currentTitle: '', result: null };
   broadcastExportProgress();
   try {
@@ -55,7 +47,6 @@ async function startBackgroundExport(mode, generateQuestions, sanitize) {
     exportProgress.result = { success: false, error: err.message };
   }
   broadcastExportProgress();
-  // Reset badge after a delay
   setTimeout(() => {
     if (!exportProgress.active) {
       chrome.action.setBadgeText({ text: isActive ? 'ON' : '' });
@@ -63,7 +54,6 @@ async function startBackgroundExport(mode, generateQuestions, sanitize) {
   }, 5000);
 }
 
-// ===== Crawl Mode State =====
 let crawlState = {
   active: false,
   seedDomain: '',       // The root domain we're crawling (same-domain constraint)
@@ -78,7 +68,6 @@ let crawlState = {
   _linksResolver: null, // Callback to wake crawlLoop when links arrive
 };
 
-// ===== Dataset Builder State =====
 let datasetBuilderState = {
   active: false,
   phase: 'idle',           // 'idle'|'decomposing'|'searching'|'crawling'|'scoring'|'exporting'|'done'|'error'
@@ -118,12 +107,10 @@ const DB_NAME = 'BrowsingCaptureDB';
 const DB_VERSION = 1;
 const STORE_NAME = 'captures';
 
-// ===== Initialize =====
 chrome.runtime.onInstalled.addListener(() => {
   loadSettings();
 });
 
-// Load state when service worker wakes up
 loadSettings();
 
 function loadSettings() {
@@ -146,7 +133,6 @@ function loadSettings() {
   });
 }
 
-// ===== IndexedDB Helper =====
 function openDB() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -187,7 +173,6 @@ async function getAllCaptures() {
   });
 }
 
-// ===== Message Handling =====
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   switch (msg.type) {
     case 'TOGGLE_CAPTURE':
@@ -270,7 +255,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
       break;
 
-    // ===== HuggingFace Messages =====
     case 'VALIDATE_HF_TOKEN':
       validateHFToken(msg.token)
         .then(result => sendResponse(result))
@@ -292,7 +276,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse({ ...hfUploadProgress });
       break;
 
-    // ===== Dataset Builder Messages =====
     case 'START_DATASET_BUILDER':
       startDatasetBuilder(msg.prompt, msg.config)
         .then(result => sendResponse(result))
@@ -328,7 +311,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse({ success: true });
       break;
 
-    // ===== Voice Commander Messages =====
     case 'VC_INIT':
       (async () => {
         try {
@@ -370,6 +352,52 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
       })();
       return true;
+
+    case 'VC_REQUEST_MIC':
+      // Inject mic capture script into active tab
+      (async () => {
+        try {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (!tab || !tab.id) {
+            sendResponse({ success: false, error: 'No active tab found' });
+            return;
+          }
+          // Skip chrome:// and other restricted URLs
+          if (tab.url && (tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://') || tab.url.startsWith('about:'))) {
+            sendResponse({ success: false, error: 'Cannot capture mic on this page. Navigate to a regular website first.' });
+            return;
+          }
+          voiceCommanderState.micTabId = tab.id;
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: ['content/mic-capture.js'],
+          });
+          sendResponse({ success: true });
+        } catch (err) {
+          console.error('[VoiceCommander] Mic injection error:', err);
+          sendResponse({ success: false, error: err.message });
+        }
+      })();
+      return true;
+
+    case 'VC_STOP_MIC':
+      // Tell the content script to stop capturing
+      if (voiceCommanderState.micTabId) {
+        chrome.tabs.sendMessage(voiceCommanderState.micTabId, { type: 'CONTENT_STOP_MIC' }).catch(() => {});
+        voiceCommanderState.micTabId = null;
+      }
+      sendResponse({ success: true });
+      break;
+
+    case 'OFFSCREEN_MIC_STARTED':
+      // Content script confirms mic is active — notify popup
+      broadcastVCStatus();
+      break;
+
+    case 'OFFSCREEN_MIC_ERROR':
+      addTranscriptEntry('action', `Mic error: ${msg.error}`, 'error');
+      broadcastVCStatus();
+      break;
 
     case 'VC_START_LISTENING':
       voiceCommanderState.active = true;
@@ -442,7 +470,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           toSave.vcGroqKey = msg.groqKey;
         }
         await chrome.storage.local.set(toSave);
-        sendResponse({ success: true });
+
+        // If switching to local tier, trigger local model install on companion
+        if (msg.tier === 'local') {
+          try {
+            const installResp = await fetch(
+              `http://localhost:${voiceCommanderState.companionHealthPort}/install-local`,
+              { method: 'POST' }
+            );
+            const installResult = await installResp.json();
+            console.log('[VoiceCommander] Local install triggered:', installResult);
+            sendResponse({ success: true, localInstall: installResult });
+          } catch (e) {
+            console.warn('[VoiceCommander] Could not trigger local install:', e.message);
+            sendResponse({ success: true, localInstallError: e.message });
+          }
+        } else {
+          sendResponse({ success: true });
+        }
       })();
       return true;
 
@@ -463,12 +508,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
-// ===== Page Capture Handler =====
 async function handlePageCapture(pageData) {
   if (settingsReady) await settingsReady;
   if (!isActive) return;
 
-  // Deduplicate by URL
   const urlKey = normalizeUrl(pageData.url);
   if (capturedUrls.has(urlKey)) return;
 
@@ -478,7 +521,6 @@ async function handlePageCapture(pageData) {
 
   capturedUrls.add(urlKey);
 
-  // Add to queue
   captureQueue.push(pageData);
   processQueue();
 }
@@ -506,7 +548,6 @@ async function processQueue() {
         contentType: pageData.contentType,
       });
 
-      // Update stats
       await updateCaptureStats(pageData);
 
       // Notify popup instantly — user sees the capture right away
@@ -520,7 +561,6 @@ async function processQueue() {
         },
       }).catch(() => {});
 
-      // Queue for background AI enhancement if enabled
       if (useAI && apiSettings.apiToken) {
         aiEnhanceQueue.push({ filename, pageData });
         scheduleAIEnhancement();
@@ -534,7 +574,6 @@ async function processQueue() {
   isProcessingQueue = false;
 }
 
-// ===== Background AI Enhancement Queue =====
 let aiEnhanceQueue = [];
 let isEnhancing = false;
 let enhanceTimer = null;
@@ -568,7 +607,6 @@ async function processAIEnhanceQueue() {
     try {
       const enhanced = await enhanceWithAI(pageData);
       if (enhanced) {
-        // Re-build markdown with AI-enhanced content and overwrite DB entry
         pageData.aiEnhanced = true;
         const obsidianMd = buildObsidianMarkdown(pageData, enhanced);
         await saveToDB(filename, obsidianMd, {
@@ -591,7 +629,6 @@ async function processAIEnhanceQueue() {
   broadcastEnhanceStatus({ active: false, current: total, total, currentTitle: '' });
   isEnhancing = false;
 
-  // If more items queued while we were processing, run again
   if (aiEnhanceQueue.length > 0) {
     scheduleAIEnhancement();
   }
@@ -602,7 +639,6 @@ function broadcastEnhanceStatus(status) {
   try { chrome.runtime.sendMessage(msg).catch(() => {}); } catch (e) {}
 }
 
-// ===== Build Obsidian Markdown =====
 function buildObsidianMarkdown(pageData, markdownContent) {
   const fm = pageData.metadata;
   const tags = generateTags(pageData);
@@ -642,7 +678,6 @@ function buildObsidianMarkdown(pageData, markdownContent) {
   return md;
 }
 
-// ===== Tag Generation =====
 function generateTags(pageData) {
   const tags = [];
   tags.push(pageData.contentType);
@@ -662,7 +697,6 @@ function generateTags(pageData) {
   return [...new Set(tags)];
 }
 
-// ===== AI Enhancement =====
 async function enhanceWithAI(pageData) {
   const systemPrompt = `You are a content structuring assistant. Your job is to take raw markdown extracted from a web page and produce a clean, well-organized Obsidian-style markdown note.
 
@@ -688,7 +722,6 @@ ${pageData.markdownContent.substring(0, 12000)}`;
   return await callAIAPI(systemPrompt, userPrompt);
 }
 
-// ===== Model Configuration =====
 // OpenAI reasoning models: no temperature, no top_p, use max_completion_tokens
 const OPENAI_REASONING_MODELS = /^(gpt-5|gpt-4\.?5|o[1-9]|o[1-9]-|chatgpt-)/i;
 
@@ -816,7 +849,6 @@ async function callAIAPI(systemPrompt, userPrompt) {
   }
 }
 
-// ===== Data Sanitization Engine =====
 // Two-layer approach: fast regex patterns + optional LLM for context-aware detection.
 // Inspired by redact-pii and OpenRedaction patterns, built directly into the extension.
 
@@ -867,14 +899,12 @@ const PII_PATTERNS = [
   { name: 'ADDRESS', pattern: /\b\d{1,5}\s+[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*\s+(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Ln|Lane|Rd|Road|Way|Ct|Court|Pl|Place)\b\.?/g, replacement: '[ADDRESS_REDACTED]' },
 ];
 
-// Regex-based sanitization (fast, runs on every page)
 function sanitizeWithRegex(text) {
   if (!text) return { text: text || '', redactionCount: 0 };
   let sanitized = text;
   let redactionCount = 0;
 
   for (const { pattern, replacement } of PII_PATTERNS) {
-    // Reset lastIndex for global regex
     pattern.lastIndex = 0;
     const matches = sanitized.match(pattern);
     if (matches) {
@@ -923,12 +953,9 @@ Output ONLY the sanitized text. Do not add explanations or wrap in code blocks.`
   return null; // Fallback: caller uses regex-only result
 }
 
-// Full sanitization pipeline: regex first, then optional LLM pass
 async function sanitizeContent(text, useLLM = false) {
-  // Layer 1: Regex-based (always runs — fast, catches structured PII)
   const { text: regexSanitized, redactionCount } = sanitizeWithRegex(text);
 
-  // Layer 2: LLM-based (optional — catches company names, context-sensitive data)
   if (useLLM && apiSettings.apiToken) {
     const llmResult = await sanitizeWithLLM(regexSanitized);
     if (llmResult) {
@@ -939,7 +966,6 @@ async function sanitizeContent(text, useLLM = false) {
   return { text: regexSanitized, redactionCount, llmUsed: false };
 }
 
-// ===== Unified Export (both .md + JSONL per page, organized by domain) =====
 // mode: 'zip' = single .zip download | 'folder' = individual files to Downloads folder
 // sanitize: false | 'regex' | 'llm' — data sanitization level
 async function handleExport(mode, generateQuestions, sanitize) {
@@ -988,7 +1014,6 @@ async function handleExport(mode, generateQuestions, sanitize) {
         : generateCleanFilename(capture.metadata?.title).replace(/\.md$/, '');
       const baseName = `${date}_${titleSlug}`;
 
-      // === Apply sanitization if enabled ===
       let mdContent = capture.content;
       if (sanitize) {
         const useLLM = sanitize === 'llm';
@@ -1001,16 +1026,13 @@ async function handleExport(mode, generateQuestions, sanitize) {
         console.log('[BrowsingCapture] Sanitization SKIPPED — sanitize value is:', sanitize);
       }
 
-      // === .md file ===
       files.push({
         path: `${domain}/notes/${baseName}.md`,
         content: mdContent,
       });
 
-      // === .jsonl file (per page — one or more training entries) ===
       const jsonlLines = [];
 
-      // Use sanitized content for training data too
       const sanitizedCapture = sanitize
         ? { ...capture, content: mdContent }
         : capture;
@@ -1020,7 +1042,6 @@ async function handleExport(mode, generateQuestions, sanitize) {
           const questions = await generateQuestionsForContent(sanitizedCapture);
           if (questions && questions.length > 0) {
             for (const q of questions) {
-              // Sanitize AI-generated answers too
               let answer = q.answer;
               if (sanitize) {
                 const ansResult = await sanitizeContent(answer, false); // regex only for speed
@@ -1052,7 +1073,6 @@ async function handleExport(mode, generateQuestions, sanitize) {
     }
   }
 
-  // === Export based on mode ===
   exportProgress.phase = 'writing';
   exportProgress.currentTitle = mode === 'zip' ? 'Creating ZIP...' : 'Writing files...';
   broadcastExportProgress();
@@ -1065,7 +1085,6 @@ async function handleExport(mode, generateQuestions, sanitize) {
     result = await exportToFolder(baseFolder, files, totalPages, domainCount);
   }
 
-  // Add sanitization stats to result
   if (sanitize && result.success) {
     result.redactions = totalRedactions;
   }
@@ -1073,7 +1092,6 @@ async function handleExport(mode, generateQuestions, sanitize) {
   return result;
 }
 
-// Export as a single ZIP file
 async function exportAsZip(baseFolder, files, totalPages, domainCount) {
   const zip = new JSZip();
 
@@ -1081,7 +1099,6 @@ async function exportAsZip(baseFolder, files, totalPages, domainCount) {
     zip.file(`${baseFolder}/${file.path}`, file.content);
   }
 
-  // Generate ZIP as base64
   const base64 = await zip.generateAsync({ type: 'base64' });
   const timestamp = new Date().toISOString().split('T')[0];
   const dataUrl = 'data:application/zip;base64,' + base64;
@@ -1136,12 +1153,10 @@ function buildSystemMessage(meta) {
 
 function stripFrontmatter(text) {
   if (!text) return '';
-  // Remove YAML frontmatter (--- ... ---) and any leading whitespace after it
   return text.replace(/^---\n[\s\S]*?\n---\n*/, '').trim();
 }
 
 function extractContentHeadings(text) {
-  // Extract h2/h3 headings from content to inform question generation
   const headings = [];
   const lines = text.split('\n');
   for (const line of lines) {
@@ -1272,7 +1287,6 @@ ${content}`;
   return JSON.parse(response);
 }
 
-// ===== Crawl Mode Engine =====
 
 async function startCrawl(seedUrl, options = {}) {
   if (crawlState.active) {
@@ -1284,7 +1298,6 @@ async function startCrawl(seedUrl, options = {}) {
     return { success: false, error: 'Cannot start crawl while Dataset Builder is running. Stop it first.' };
   }
 
-  // Ensure capturing is active
   if (!isActive) {
     isActive = true;
     await chrome.storage.local.set({ isActive: true });
@@ -1300,7 +1313,6 @@ async function startCrawl(seedUrl, options = {}) {
 
   const seedDomain = normalizeSubdomain(seedUrlObj.hostname.replace(/^www\./, ''));
 
-  // Reset crawl state
   crawlState.active = true;
   crawlState.seedDomain = seedDomain;
   crawlState.queue = [];  // Seed URL is handled by chrome.tabs.create, not the queue
@@ -1312,7 +1324,6 @@ async function startCrawl(seedUrl, options = {}) {
   crawlState.depthMap = { [seedUrl]: 0 };
   crawlState.tabId = null;
 
-  // Create a background tab for crawling
   try {
     const tab = await chrome.tabs.create({ url: seedUrl, active: false });
     crawlState.tabId = tab.id;
@@ -1321,7 +1332,6 @@ async function startCrawl(seedUrl, options = {}) {
     return { success: false, error: 'Failed to create crawl tab: ' + e.message };
   }
 
-  // Broadcast status
   broadcastCrawlStatus();
 
   // Start the crawl loop (don't await — runs in background)
@@ -1336,7 +1346,6 @@ async function startCrawl(seedUrl, options = {}) {
 function stopCrawl() {
   crawlState.active = false;
 
-  // Close the crawl tab if it still exists
   if (crawlState.tabId) {
     chrome.tabs.remove(crawlState.tabId).catch(() => {});
     crawlState.tabId = null;
@@ -1415,7 +1424,6 @@ function waitForLinks(timeoutMs = 10000) {
 }
 
 async function crawlLoop() {
-  // === Phase 1: Wait for seed page ===
   try {
     await waitForTabLoad(crawlState.tabId);
   } catch (e) {
@@ -1438,7 +1446,6 @@ async function crawlLoop() {
     return;
   }
 
-  // === Phase 2: Process the BFS queue ===
   while (crawlState.active && crawlState.queue.length > 0) {
     if (crawlState.pagesCrawled >= crawlState.maxPages) {
       console.log(`[BrowsingCapture] Crawl hit max pages limit (${crawlState.maxPages})`);
@@ -1479,7 +1486,6 @@ async function crawlLoop() {
     }
   }
 
-  // Crawl complete
   const total = crawlState.pagesCrawled;
   stopCrawl();
   console.log(`[BrowsingCapture] Crawl complete. ${total} pages captured.`);
@@ -1511,7 +1517,6 @@ function waitForTabLoad(tabId) {
   });
 }
 
-// ===== Dataset Builder Engine =====
 
 function broadcastDatasetStatus() {
   chrome.runtime.sendMessage({
@@ -1541,7 +1546,6 @@ async function startDatasetBuilder(prompt, config = {}) {
     config.braveApiKey = stored.braveApiKey || '';
   }
 
-  // Reset state
   datasetBuilderState.active = true;
   datasetBuilderState.phase = 'decomposing';
   datasetBuilderState.prompt = prompt.trim();
@@ -1570,7 +1574,6 @@ async function startDatasetBuilder(prompt, config = {}) {
   datasetBuilderState._searchResolver = null;
   datasetBuilderState._startedAt = Date.now();
 
-  // Ensure capturing is active
   if (!isActive) {
     isActive = true;
     await chrome.storage.local.set({ isActive: true });
@@ -1579,7 +1582,6 @@ async function startDatasetBuilder(prompt, config = {}) {
 
   broadcastDatasetStatus();
 
-  // Fire-and-forget pipeline
   datasetBuilderPipeline().catch(err => {
     console.error('[DatasetBuilder] Pipeline error:', err);
     datasetBuilderState.phase = 'error';
@@ -1638,7 +1640,6 @@ async function datasetBuilderPipeline() {
   }
 }
 
-// --- Phase 1: Decompose prompt into search queries ---
 async function dsDecomposePrompt() {
   datasetBuilderState.phase = 'decomposing';
   broadcastDatasetStatus();
@@ -1674,7 +1675,6 @@ Rules:
   broadcastDatasetStatus();
 }
 
-// --- Phase 2: Search Brave for URLs ---
 async function dsSearchAllQueries() {
   datasetBuilderState.phase = 'searching';
   broadcastDatasetStatus();
@@ -1770,7 +1770,6 @@ async function dsSearchBraveBrowser(query) {
   });
 }
 
-// --- Phase 3: Crawl and extract content from source URLs ---
 async function dsCrawlSources() {
   datasetBuilderState.phase = 'crawling';
   broadcastDatasetStatus();
@@ -1820,7 +1819,6 @@ async function dsCrawlSources() {
   console.log('[DatasetBuilder] Captured', datasetBuilderState.capturedPages.length, 'pages');
 }
 
-// --- Phase 4: Score entries for quality ---
 async function dsScoreEntries() {
   datasetBuilderState.phase = 'scoring';
   broadcastDatasetStatus();
@@ -1874,7 +1872,6 @@ Output ONLY valid JSON: {"score": 0.85, "reason": "brief reason"}`;
   }
 }
 
-// --- Phase 5: Classify and export ---
 function dsClassifyEntries() {
   const { goldThreshold, silverThreshold, qualityTier } = datasetBuilderState.config;
   let gold = 0, silver = 0, discard = 0;
@@ -2007,7 +2004,6 @@ ${entries.map(e => `- [${e.title}](${e.url}) — ${e.quality_tier} (${e.quality_
 `;
 }
 
-// ===== Stats =====
 async function updateCaptureStats(pageData) {
   const state = await chrome.storage.local.get(['captureCount', 'totalWords', 'recentCaptures']);
   const count = (state.captureCount || 0) + 1;
@@ -2031,7 +2027,6 @@ async function updateCaptureStats(pageData) {
   });
 }
 
-// ===== Badge =====
 function updateBadge() {
   if (isActive) {
     chrome.action.setBadgeText({ text: 'ON' });
@@ -2041,7 +2036,6 @@ function updateBadge() {
   }
 }
 
-// ===== Utilities =====
 function normalizeUrl(url) {
   try {
     const u = new URL(url);
@@ -2056,7 +2050,6 @@ function normalizeUrl(url) {
   }
 }
 
-// ===== Domain Helpers =====
 
 // Common multi-part TLDs that should NOT be stripped
 const MULTI_PART_TLDS = new Set([
@@ -2095,13 +2088,11 @@ function groupCapturesByDomain(captures) {
     if (!grouped[domain]) grouped[domain] = [];
     grouped[domain].push(capture);
   }
-  // Sort alphabetically
   return Object.fromEntries(
     Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b))
   );
 }
 
-// ===== Filename Generation =====
 
 function generateCleanFilename(title) {
   const slug = (title || 'untitled')
@@ -2191,7 +2182,6 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// ===== HuggingFace Integration =====
 let hfUploadProgress = {
   active: false,
   phase: '',       // 'preparing' | 'creating' | 'uploading' | 'done' | 'error'
@@ -2321,7 +2311,6 @@ async function uploadFilesToDataset(token, repoId, files) {
   return await resp.json();
 }
 
-// ===== Voice Commander Engine =====
 
 let voiceCommanderState = {
   active: false,
@@ -2337,9 +2326,9 @@ let voiceCommanderState = {
   transcript: [],             // {role, text, timestamp, action?}[]
   conversationHistory: [],    // {role, content}[] for multi-turn context
   maxHistoryTurns: 10,
+  micTabId: null,             // Tab ID where mic capture is injected
 };
 
-// --- PinchTab HTTP Client ---
 
 async function ptFetch(path, options = {}) {
   const port = voiceCommanderState.pinchtabPort;
@@ -2397,7 +2386,6 @@ async function ptHealthCheck() {
   }
 }
 
-// --- Voice Commander Tool Definitions (shared across tiers) ---
 
 const VC_TOOLS = [
   {
@@ -2497,7 +2485,6 @@ const VC_TOOLS = [
   },
 ];
 
-// --- Tool Executor ---
 
 async function executeVCTool(name, args) {
   const result = { tool: name, success: false, output: '' };
@@ -2569,7 +2556,6 @@ async function executeVCTool(name, args) {
   return result;
 }
 
-// --- VC System Prompt ---
 
 function getVCSystemPrompt(pageContext) {
   return `You are a voice-controlled browser assistant. The user speaks commands and you execute them using browser tools.
@@ -2587,7 +2573,6 @@ ${pageContext ? `CURRENT PAGE CONTEXT:\n${pageContext}\n` : ''}
 You have these browser control tools available. Use them to fulfill the user's requests.`;
 }
 
-// --- Groq Tier Pipeline ---
 
 async function processAudioGroq(audioBase64) {
   const groqKey = voiceCommanderState.groqApiKey;
@@ -2758,20 +2743,18 @@ async function processAudioGroq(audioBase64) {
   }
 }
 
-// --- Local Tier Pipeline ---
 
 async function processAudioLocal(audioBase64) {
   voiceCommanderState.processing = true;
   broadcastVCStatus();
 
   try {
-    // Step 1: Speech-to-Text via local whisper.cpp
     const audioBlob = base64ToBlob(audioBase64, 'audio/webm');
     const formData = new FormData();
     formData.append('file', audioBlob, 'audio.webm');
     formData.append('response_format', 'json');
 
-    const sttResp = await fetch(`http://localhost:${voiceCommanderState.companionHealthPort === 9868 ? 8081 : 8081}/inference`, {
+    const sttResp = await fetch('http://localhost:8081/inference', {
       method: 'POST',
       body: formData,
     });
@@ -2870,7 +2853,6 @@ async function processAudioLocal(audioBase64) {
   }
 }
 
-// --- OpenAI Realtime Tier ---
 
 async function getRealtimeEphemeralToken() {
   // Use the existing OpenAI API key from settings
@@ -2909,9 +2891,6 @@ async function getRealtimeEphemeralToken() {
   const data = await resp.json();
   return data; // Contains client_secret.value for ephemeral token
 }
-
-// --- VC Message Broadcasting ---
-
 function broadcastVCStatus() {
   const msg = {
     type: 'VC_STATUS',
@@ -2947,7 +2926,6 @@ function addTranscriptEntry(role, text, action) {
   broadcastVCStatus();
 }
 
-// --- VC Utility Functions ---
 
 function base64ToBlob(base64, mimeType) {
   const byteChars = atob(base64);
@@ -2967,7 +2945,6 @@ function arrayBufferToBase64(buffer) {
   return btoa(binary);
 }
 
-// ===== End Voice Commander Engine =====
 
 async function pushToHuggingFace(token, username, repoId, isNew, isPrivate) {
   if (hfUploadProgress.active) return;

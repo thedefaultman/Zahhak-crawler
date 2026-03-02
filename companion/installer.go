@@ -10,7 +10,7 @@ import (
 	"runtime"
 )
 
-// DownloadURLs maps platform-specific download URLs for each service
+// DownloadURLs contains per-platform binary download URLs keyed by service name.
 var DownloadURLs = map[string]map[string]string{
 	"pinchtab": {
 		"darwin/amd64":  "https://github.com/pinchtab/pinchtab/releases/latest/download/pinchtab-darwin-amd64",
@@ -19,27 +19,18 @@ var DownloadURLs = map[string]map[string]string{
 		"linux/arm64":   "https://github.com/pinchtab/pinchtab/releases/latest/download/pinchtab-linux-arm64",
 		"windows/amd64": "https://github.com/pinchtab/pinchtab/releases/latest/download/pinchtab-windows-amd64.exe",
 	},
-	"whisper-server": {
-		// whisper.cpp server binaries — user may need to compile or use pre-built
-		"darwin/amd64":  "https://github.com/ggerganov/whisper.cpp/releases/latest/download/whisper-server-darwin-amd64",
-		"darwin/arm64":  "https://github.com/ggerganov/whisper.cpp/releases/latest/download/whisper-server-darwin-arm64",
-		"linux/amd64":   "https://github.com/ggerganov/whisper.cpp/releases/latest/download/whisper-server-linux-amd64",
-		"windows/amd64": "https://github.com/ggerganov/whisper.cpp/releases/latest/download/whisper-server-windows-amd64.exe",
-	},
 }
 
-// ModelURLs maps model files to download
-var ModelURLs = map[string]string{
-	"ggml-tiny.en.bin": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin",
-}
+// WhisperfileURL points to the cross-platform whisperfile with a baked-in model (~87 MB).
+var WhisperfileURL = "https://huggingface.co/Mozilla/whisperfile/resolve/main/whisper-tiny.en.llamafile"
 
 // LlamafileURLs for the bundled model
 var LlamafileURLs = map[string]string{
-	// Phi-3 Mini Q4 llamafile — single executable with model baked in
-	"llamafile": "https://huggingface.co/Mozilla/Phi-3-mini-4k-instruct-llamafile/resolve/main/Phi-3-mini-4k-instruct-Q4_K_M.llamafile",
+	// Phi-3 Mini Q4 llamafile — single executable with model baked in (~2.4GB)
+	"llamafile": "https://huggingface.co/Mozilla/Phi-3-mini-4k-instruct-llamafile/resolve/main/Phi-3-mini-4k-instruct.Q4_K_M.llamafile",
 }
 
-// InstallService downloads and installs a service binary
+// InstallService downloads the named service binary for the current platform into dataDir/bin.
 func InstallService(name string, dataDir string) error {
 	platform := runtime.GOOS + "/" + runtime.GOARCH
 
@@ -69,7 +60,6 @@ func InstallService(name string, dataDir string) error {
 		return fmt.Errorf("download failed: %w", err)
 	}
 
-	// Make executable on Unix
 	if runtime.GOOS != "windows" {
 		if err := os.Chmod(destPath, 0755); err != nil {
 			return fmt.Errorf("chmod failed: %w", err)
@@ -80,29 +70,40 @@ func InstallService(name string, dataDir string) error {
 	return nil
 }
 
-// InstallModel downloads a model file
-func InstallModel(name string, dataDir string) error {
-	url, ok := ModelURLs[name]
-	if !ok {
-		return fmt.Errorf("unknown model: %s", name)
+// InstallWhisperfile fetches the whisperfile binary (model + runtime in one file) into dataDir/bin.
+func InstallWhisperfile(dataDir string) error {
+	binDir := filepath.Join(dataDir, "bin")
+	if err := os.MkdirAll(binDir, 0755); err != nil {
+		return fmt.Errorf("cannot create bin directory: %w", err)
 	}
 
-	modelDir := filepath.Join(dataDir, "models")
-	if err := os.MkdirAll(modelDir, 0755); err != nil {
-		return fmt.Errorf("cannot create models directory: %w", err)
+	ext := ""
+	if runtime.GOOS == "windows" {
+		ext = ".exe"
 	}
+	destPath := filepath.Join(binDir, "whisperfile"+ext)
 
-	destPath := filepath.Join(modelDir, name)
 	if _, err := os.Stat(destPath); err == nil {
-		log.Printf("Model %s already exists at %s", name, destPath)
+		log.Printf("Whisperfile already exists at %s", destPath)
 		return nil
 	}
 
-	log.Printf("Downloading model %s from %s...", name, url)
-	return downloadFile(url, destPath)
+	log.Printf("Downloading whisperfile (~87MB) from %s...", WhisperfileURL)
+	if err := downloadFile(WhisperfileURL, destPath); err != nil {
+		return fmt.Errorf("download failed: %w", err)
+	}
+
+	if runtime.GOOS != "windows" {
+		if err := os.Chmod(destPath, 0755); err != nil {
+			return fmt.Errorf("chmod failed: %w", err)
+		}
+	}
+
+	log.Printf("Installed whisperfile to %s", destPath)
+	return nil
 }
 
-// InstallLlamafile downloads the llamafile (model + runtime)
+// InstallLlamafile fetches the llamafile binary (model + runtime) into dataDir/bin.
 func InstallLlamafile(dataDir string) error {
 	url := LlamafileURLs["llamafile"]
 
@@ -122,7 +123,7 @@ func InstallLlamafile(dataDir string) error {
 		return nil
 	}
 
-	log.Printf("Downloading llamafile (~2.2GB) from %s...", url)
+	log.Printf("Downloading llamafile (~2.4GB) from %s...", url)
 	if err := downloadFile(url, destPath); err != nil {
 		return fmt.Errorf("download failed: %w", err)
 	}

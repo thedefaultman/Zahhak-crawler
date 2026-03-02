@@ -15,7 +15,7 @@ import (
 	"syscall"
 )
 
-// Config holds runtime settings
+// Config holds CLI flag values and the generated bridge token.
 type Config struct {
 	PinchTabPort  int    `json:"pinchtabPort"`
 	HealthPort    int    `json:"healthPort"`
@@ -31,17 +31,15 @@ var (
 )
 
 func main() {
-	// CLI flags
 	ptPort := flag.Int("pinchtab-port", 9867, "PinchTab server port")
 	healthPort := flag.Int("health-port", 9868, "Health check API port")
-	whisperPort := flag.Int("whisper-port", 8081, "Whisper.cpp server port")
+	whisperPort := flag.Int("whisper-port", 8081, "Whisperfile server port")
 	llamaPort := flag.Int("llama-port", 8080, "Llamafile server port")
 	dataDir := flag.String("data-dir", "", "Directory for downloaded binaries and models")
 	tier := flag.String("tier", "cloud", "Tier to set up: 'cloud' (PinchTab only) or 'local' (PinchTab + Whisper + Llamafile)")
 	skipInstall := flag.Bool("skip-install", false, "Skip automatic download of missing binaries")
 	flag.Parse()
 
-	// Determine data directory
 	if *dataDir == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -50,12 +48,10 @@ func main() {
 		*dataDir = filepath.Join(home, ".voice-commander")
 	}
 
-	// Ensure data directory exists
 	if err := os.MkdirAll(*dataDir, 0755); err != nil {
 		log.Fatal("Cannot create data directory:", err)
 	}
 
-	// Generate or load bridge token
 	bridgeToken := loadOrGenerateToken(filepath.Join(*dataDir, "bridge_token"))
 
 	config = Config{
@@ -75,25 +71,20 @@ func main() {
 	fmt.Printf("Bridge Token: %s...\n", config.BridgeToken[:8])
 	fmt.Println()
 
-	// Initialize service manager
 	services = NewServiceManager(config)
 
-	// Auto-install missing binaries (unless --skip-install)
 	if !*skipInstall {
 		if err := autoInstall(*tier, config.DataDir); err != nil {
 			log.Fatalf("Auto-install failed: %v", err)
 		}
-		// Refresh installed status after downloads
 		services.RefreshInstallStatus()
 	}
 
-	// Start PinchTab (required for all tiers)
 	if err := services.StartPinchTab(); err != nil {
 		log.Printf("Error: Could not start PinchTab: %v", err)
 		log.Println("Try re-running the companion app or check your network connection.")
 	}
 
-	// Start local tier services if requested
 	if *tier == "local" {
 		if err := services.StartWhisper(); err != nil {
 			log.Printf("Warning: Could not start Whisper: %v", err)
@@ -103,10 +94,8 @@ func main() {
 		}
 	}
 
-	// Start health check server
 	go startHealthServer()
 
-	// Handle graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
@@ -121,7 +110,6 @@ func main() {
 func startHealthServer() {
 	mux := http.NewServeMux()
 
-	// CORS middleware
 	corsHandler := func(next http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -146,7 +134,7 @@ func startHealthServer() {
 	}
 }
 
-// ServiceStatus describes the status of a single service
+// ServiceStatus is the per-service JSON payload returned by /health.
 type ServiceStatus struct {
 	Status string `json:"status"` // "running", "stopped", "error", "not_installed"
 	Port   int    `json:"port"`
@@ -170,7 +158,7 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 		Llamafile:   services.GetStatus("llamafile"),
 		BridgeToken: config.BridgeToken,
 		Platform:    runtime.GOOS + "/" + runtime.GOARCH,
-		Version:     "0.1.0",
+		Version:     "0.2.0",
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -198,7 +186,6 @@ func handleInstallLocal(w http.ResponseWriter, r *http.Request) {
 		}
 		services.RefreshInstallStatus()
 
-		// Auto-start local services after install
 		if err := services.StartWhisper(); err != nil {
 			log.Printf("Warning: Could not start Whisper after install: %v", err)
 		}
@@ -221,7 +208,6 @@ func autoInstall(tier string, dataDir string) error {
 		ext = ".exe"
 	}
 
-	// PinchTab is ALWAYS required (all tiers need it for browser control)
 	ptPath := filepath.Join(binDir, "pinchtab"+ext)
 	if _, err := os.Stat(ptPath); os.IsNotExist(err) {
 		fmt.Println("PinchTab not found — downloading automatically...")
@@ -231,31 +217,19 @@ func autoInstall(tier string, dataDir string) error {
 		fmt.Println("PinchTab installed successfully!")
 	}
 
-	// Local tier: also need whisper.cpp server + model + llamafile
 	if tier == "local" {
-		whisperPath := filepath.Join(binDir, "whisper-server"+ext)
+		whisperPath := filepath.Join(binDir, "whisperfile"+ext)
 		if _, err := os.Stat(whisperPath); os.IsNotExist(err) {
-			fmt.Println("Whisper.cpp server not found — downloading automatically...")
-			if err := InstallService("whisper-server", dataDir); err != nil {
-				return fmt.Errorf("failed to install Whisper server: %w", err)
+			fmt.Println("Whisperfile not found — downloading (~87MB)...")
+			if err := InstallWhisperfile(dataDir); err != nil {
+				return fmt.Errorf("failed to install Whisperfile: %w", err)
 			}
-			fmt.Println("Whisper.cpp server installed successfully!")
+			fmt.Println("Whisperfile installed successfully!")
 		}
 
-		// Whisper model
-		modelPath := filepath.Join(dataDir, "models", "ggml-tiny.en.bin")
-		if _, err := os.Stat(modelPath); os.IsNotExist(err) {
-			fmt.Println("Whisper model not found — downloading (~39MB)...")
-			if err := InstallModel("ggml-tiny.en.bin", dataDir); err != nil {
-				return fmt.Errorf("failed to install Whisper model: %w", err)
-			}
-			fmt.Println("Whisper model installed successfully!")
-		}
-
-		// Llamafile (LLM + runtime in one binary)
 		llamaPath := filepath.Join(binDir, "llamafile"+ext)
 		if _, err := os.Stat(llamaPath); os.IsNotExist(err) {
-			fmt.Println("Llamafile not found — downloading (~2.2GB, this may take a while)...")
+			fmt.Println("Llamafile not found — downloading (~2.4GB, this may take a while)...")
 			if err := InstallLlamafile(dataDir); err != nil {
 				return fmt.Errorf("failed to install Llamafile: %w", err)
 			}
@@ -268,20 +242,17 @@ func autoInstall(tier string, dataDir string) error {
 }
 
 func loadOrGenerateToken(path string) string {
-	// Try to read existing token
 	data, err := os.ReadFile(path)
 	if err == nil && len(data) > 0 {
 		return string(data)
 	}
 
-	// Generate new token
 	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {
 		log.Fatal("Cannot generate random token:", err)
 	}
 	token := hex.EncodeToString(bytes)
 
-	// Save it
 	if err := os.WriteFile(path, []byte(token), 0600); err != nil {
 		log.Printf("Warning: Could not save bridge token: %v", err)
 	}

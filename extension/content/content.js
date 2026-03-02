@@ -1,18 +1,14 @@
-// ===== Browsing Capture — Content Script =====
 // Injected into every page. Uses Defuddle for universal content extraction,
 // then Turndown for HTML→Markdown conversion. No site-specific selectors.
 
 (function () {
   'use strict';
 
-  // Prevent double-injection
   if (window.__browsingCaptureInjected) return;
   window.__browsingCaptureInjected = true;
 
-  // Track which URLs we've already sent to the service worker (for this page lifetime)
   const capturedInSession = new Set();
 
-  // ===== Configuration =====
   const SKIP_URL_PATTERNS = [
     // Browser internal pages
     /^chrome/,
@@ -83,12 +79,10 @@
   const MIN_CONTENT_LENGTH = 200;
   const CAPTURE_DELAY_MS = 2500;
 
-  // ===== Check if we should capture this page =====
   function shouldSkipUrl(url) {
     return SKIP_URL_PATTERNS.some(pattern => pattern.test(url));
   }
 
-  // ===== Main Extraction Pipeline =====
   async function extractPageContent() {
     const url = window.location.href;
 
@@ -103,7 +97,6 @@
     }
 
     try {
-      // Step 1: Use Defuddle to extract main content (universal, no site-specific code)
       const defuddle = new Defuddle(document, { url });
       const result = defuddle.parse();
 
@@ -111,7 +104,6 @@
         return null;
       }
 
-      // Step 2: Extract what Defuddle gives us (title, author, description, etc.)
       const title = result.title || document.title || 'Untitled';
       const author = result.author || '';
       const description = result.description || '';
@@ -119,24 +111,19 @@
       const domain = result.domain || new URL(url).hostname.replace(/^www\./, '');
       const siteName = result.site || '';
 
-      // Step 2b: Check if this is a low-value page based on title content
       const titleAndDesc = (title + ' ' + description).trim();
       if (LOW_VALUE_CONTENT_PATTERNS.some(p => p.test(titleAndDesc))) {
         return null;
       }
 
-      // Step 3: Convert Defuddle's clean HTML to Markdown using Turndown
       let markdown = htmlToMarkdown(result.content);
 
       if (!markdown || markdown.trim().length < 100) return null;
 
-      // Step 4: Clean up the markdown
       markdown = cleanMarkdown(markdown);
 
-      // Step 5: Detect content type from content itself (not from domain)
       const contentType = detectContentType(url, result, markdown);
 
-      // Step 6: Build structured data
       const wordCount = result.wordCount || markdown.split(/\s+/).filter(w => w.length > 0).length;
 
       return {
@@ -165,7 +152,6 @@
     }
   }
 
-  // ===== Schema.org type extraction =====
   function getSchemaType(schemaData) {
     if (!schemaData) return '';
     // schemaOrgData can be an object or array
@@ -179,7 +165,6 @@
     return '';
   }
 
-  // ===== Keywords from meta tags =====
   function extractKeywords() {
     const metaKeywords = document.querySelector('meta[name="keywords"]');
     if (metaKeywords) {
@@ -191,7 +176,6 @@
     return [];
   }
 
-  // ===== Content Type Detection (universal, content-based) =====
   function detectContentType(url, defuddleResult, markdown) {
     const urlLower = url.toLowerCase();
 
@@ -236,7 +220,6 @@
     return 'general';
   }
 
-  // ===== HTML to Markdown Conversion =====
   function htmlToMarkdown(html) {
     const turndownService = new TurndownService({
       headingStyle: 'atx',
@@ -247,7 +230,6 @@
       linkStyle: 'inlined',
     });
 
-    // Custom rule: preserve code blocks better
     turndownService.addRule('fencedCodeBlock', {
       filter: function (node) {
         return node.nodeName === 'PRE' && node.querySelector('code');
@@ -263,7 +245,6 @@
       },
     });
 
-    // Custom rule: handle tables
     turndownService.addRule('table', {
       filter: 'table',
       replacement: function (content, node) {
@@ -285,7 +266,6 @@
       },
     });
 
-    // Convert emoji images (base64 data URIs with emoji alt text) to plain emoji
     turndownService.addRule('emojiImages', {
       filter: function (node) {
         if (node.nodeName !== 'IMG') return false;
@@ -313,7 +293,6 @@
       replacement: function () { return ''; },
     });
 
-    // Remove data URI images (base64 blobs that add noise)
     turndownService.addRule('removeDataUriImages', {
       filter: function (node) {
         if (node.nodeName !== 'IMG') return false;
@@ -323,17 +302,14 @@
       replacement: function () { return ''; },
     });
 
-    // Remove avatar-style images (small profile pictures linked to profiles)
     turndownService.addRule('removeAvatarImages', {
       filter: function (node) {
         if (node.nodeName !== 'IMG') return false;
         const src = node.getAttribute('src') || '';
         const alt = node.getAttribute('alt') || '';
-        // Detect avatar URLs (common patterns across all sites)
         const isAvatar = /avatar|profile|user.*photo|gravatar/i.test(src) ||
                          /avatar|profile/i.test(node.className || '');
         const isSmall = (node.width > 0 && node.width <= 64) || (node.height > 0 && node.height <= 64);
-        // Username-style alt text: @username or very short
         const isUserAlt = /^@/.test(alt) || (alt.length <= 20 && isSmall);
         return isAvatar || (isSmall && isUserAlt);
       },
@@ -350,18 +326,14 @@
     }
   }
 
-  // ===== Markdown Cleanup =====
   function cleanMarkdown(md) {
-    // Remove leftover base64 data URI image references
     md = md.replace(/!\[[^\]]*\]\(data:image\/[^)]+\)/g, '');
 
     // Remove avatar image links: [![@username](avatar-url)](profile-url) — universal pattern
     md = md.replace(/\[!\[[^\]]*\]\([^)]*(?:avatar|gravatar|profile)[^)]*\)\]\([^)]*\)\s*/gi, '');
 
-    // Remove lines that are just empty links
     md = md.replace(/^\[?\s*\]\([^)]+\)\s*$/gm, '');
 
-    // Remove common boilerplate/navigation text (full lines only)
     const boilerplatePatterns = [
       /^\[?skip to (?:content|main|navigation)\]?(?:\(#[^)]*\))?\s*$/gim,
       /^add (?:icon|cover|comment|verification)\s*$/gim,
@@ -377,16 +349,13 @@
       md = md.replace(pattern, '');
     }
 
-    // Remove excessive blank lines (3+ → 2)
     md = md.replace(/\n{3,}/g, '\n\n');
 
-    // Trim leading/trailing whitespace
     md = md.trim();
 
     return md;
   }
 
-  // ===== Image Extraction =====
   function extractImages() {
     const images = [];
     document.querySelectorAll('img[alt]').forEach(img => {
@@ -406,7 +375,6 @@
     return images.slice(0, 20);
   }
 
-  // ===== Link Extraction =====
   function extractLinks() {
     const links = [];
     const seen = new Set();
@@ -432,7 +400,6 @@
     return links.slice(0, 50);
   }
 
-  // ===== Trigger Capture =====
   function triggerCapture() {
     setTimeout(async () => {
       if (typeof requestIdleCallback === 'function') {
@@ -447,7 +414,6 @@
     const pageData = await extractPageContent();
     if (!pageData) return;
 
-    // Don't re-send the same URL from this page lifetime
     const urlKey = pageData.url.split('#')[0];
     if (capturedInSession.has(urlKey)) return;
     capturedInSession.add(urlKey);
@@ -458,13 +424,9 @@
       console.error('[BrowsingCapture] Failed to send to background:', e);
     }
 
-    // Discover same-domain links for crawl mode
     discoverLinksForCrawl();
   }
 
-  // ===== Crawl Mode: Link Discovery =====
-  // Finds all same-domain links on the current page and reports them to the service worker.
-  // The service worker decides whether crawl mode is active and whether to follow them.
   function discoverLinksForCrawl() {
     const currentHost = window.location.hostname.replace(/^www\./, '');
     const links = new Set();
@@ -476,21 +438,16 @@
 
         const linkUrl = new URL(href);
 
-        // Only http/https
         if (linkUrl.protocol !== 'http:' && linkUrl.protocol !== 'https:') return;
 
-        // Same domain check (compare base domains)
         const linkHost = linkUrl.hostname.replace(/^www\./, '');
         if (!isSameDomain(currentHost, linkHost)) return;
 
-        // Skip anchors, query-only differences, and skip patterns
         linkUrl.hash = '';
         const cleanUrl = linkUrl.toString();
 
-        // Skip URLs that match our skip patterns
         if (shouldSkipUrl(cleanUrl)) return;
 
-        // Skip obviously non-content URLs
         if (/\.(png|jpg|jpeg|gif|svg|webp|ico|pdf|zip|tar|gz|mp4|mp3|woff2?|ttf|eot|css|js)$/i.test(linkUrl.pathname)) return;
 
         links.add(cleanUrl);
@@ -508,10 +465,8 @@
     }
   }
 
-  // Compare two hostnames to check if they belong to the same base domain
   function isSameDomain(host1, host2) {
     if (host1 === host2) return true;
-    // Extract base domains (e.g., docs.github.com → github.com)
     const base1 = getBaseDomain(host1);
     const base2 = getBaseDomain(host2);
     return base1 === base2;
@@ -530,7 +485,6 @@
     return parts.slice(-2).join('.');
   }
 
-  // ===== Brave Search Result Extraction (for Dataset Builder browser fallback) =====
   function extractBraveSearchResults() {
     const url = window.location.href;
     if (!url.includes('search.brave.com')) return;
@@ -565,22 +519,18 @@
       try {
         const href = a.href;
         if (!href || seen.has(href)) return;
-        // Skip Brave internal links
         if (href.includes('brave.com') || href.includes('search.brave.com')) return;
-        // Skip non-http
         const linkUrl = new URL(href);
         if (linkUrl.protocol !== 'http:' && linkUrl.protocol !== 'https:') return;
 
         seen.add(href);
 
-        // Get title: link text or closest heading
         let title = a.textContent.trim();
         if (!title) {
           const heading = a.closest('.snippet')?.querySelector('h2, h3, .title');
           title = heading?.textContent?.trim() || '';
         }
 
-        // Get snippet: sibling or parent description
         let snippet = '';
         const snippetContainer = a.closest('.snippet') || a.closest('.result');
         if (snippetContainer) {
@@ -607,7 +557,6 @@
     }
   }
 
-  // Auto-detect Brave search pages and extract results
   if (window.location.hostname.includes('search.brave.com')) {
     // Run immediately
     setTimeout(extractBraveSearchResults, 1500);
@@ -615,7 +564,6 @@
     setTimeout(extractBraveSearchResults, 3500);
   }
 
-  // ===== SPA Navigation Detection =====
   let lastUrl = window.location.href;
 
   const observer = new MutationObserver(() => {
@@ -643,13 +591,11 @@
     if (window.location.href !== lastUrl) { lastUrl = window.location.href; triggerCapture(); }
   });
 
-  // ===== Listen for retry requests (e.g. when user toggles capture ON) =====
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg.type === 'RETRY_CAPTURE') {
       triggerCapture();
     }
   });
 
-  // ===== Initial Capture =====
   triggerCapture();
 })();

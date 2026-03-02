@@ -1,4 +1,3 @@
-// ===== DOM Elements =====
 const activateToggle = document.getElementById('activate-toggle');
 const captureStatus = document.getElementById('capture-status');
 const captureCount = document.getElementById('capture-count');
@@ -21,7 +20,6 @@ const sanitizeSelect = document.getElementById('sanitize-select');
 const recentList = document.getElementById('recent-list');
 const toast = document.getElementById('toast');
 
-// Crawl mode elements
 const crawlHeader = document.getElementById('crawl-header');
 const crawlBody = document.getElementById('crawl-body');
 const crawlUrlInput = document.getElementById('crawl-url');
@@ -36,11 +34,9 @@ const crawlDomain = document.getElementById('crawl-domain');
 const crawlPagesCount = document.getElementById('crawl-pages-count');
 const crawlQueueCount = document.getElementById('crawl-queue-count');
 
-// AI Enhancement status elements
 const enhanceStatusDiv = document.getElementById('enhance-status');
 const enhanceStatusText = document.getElementById('enhance-status-text');
 
-// HuggingFace elements
 const hfHeader = document.getElementById('hf-header');
 const hfBody = document.getElementById('hf-body');
 const hfTokenInput = document.getElementById('hf-token');
@@ -64,7 +60,6 @@ const hfLinksDiv = document.getElementById('hf-links');
 const hfLinkDataset = document.getElementById('hf-link-dataset');
 const hfLinkAutotrain = document.getElementById('hf-link-autotrain');
 
-// Dataset Builder elements
 const dsHeader = document.getElementById('ds-header');
 const dsBody = document.getElementById('ds-body');
 const dsPrompt = document.getElementById('ds-prompt');
@@ -92,7 +87,6 @@ const dsStatScored = document.getElementById('ds-stat-scored');
 const dsStatGold = document.getElementById('ds-stat-gold');
 const dsStatSilver = document.getElementById('ds-stat-silver');
 
-// Voice Commander elements
 const vcHeader = document.getElementById('vc-header');
 const vcBody = document.getElementById('vc-body');
 const vcTierSelect = document.getElementById('vc-tier');
@@ -114,7 +108,6 @@ const vcMicBtn = document.getElementById('vc-mic-btn');
 const vcMicLabel = document.getElementById('vc-mic-label');
 const vcTranscript = document.getElementById('vc-transcript');
 
-// Voice Commander state
 let vcListening = false;
 let vcMediaRecorder = null;
 let vcAudioStream = null;
@@ -124,7 +117,6 @@ let vcAudioContext = null;
 let vcAnalyser = null;
 let vcRealtimePc = null; // WebRTC peer connection for OpenAI Realtime
 
-// Settings elements
 const excludedUrls = document.getElementById('excluded-urls');
 const minWords = document.getElementById('min-words');
 const spaDetection = document.getElementById('spa-detection');
@@ -135,7 +127,6 @@ const aiDelay = document.getElementById('ai-delay');
 const saveSettingsBtn = document.getElementById('save-settings');
 const clearDataBtn = document.getElementById('clear-data');
 
-// Collapsible sections
 const apiHeader = document.getElementById('api-header');
 const apiBody = document.getElementById('api-body');
 const settingsHeader = document.getElementById('settings-header');
@@ -143,11 +134,9 @@ const settingsBody = document.getElementById('settings-body');
 const recentHeader = document.getElementById('recent-header');
 const recentBody = document.getElementById('recent-body');
 
-// ===== State =====
 let sessionTimer = null;
 let sessionStartTime = null;
 
-// All persisted keys in one place
 const ALL_KEYS = [
   'isActive', 'useAI', 'provider', 'apiToken', 'customEndpoint',
   'model', 'captureCount', 'totalWords', 'sessionStart', 'recentCaptures',
@@ -159,33 +148,27 @@ const ALL_KEYS = [
   'vcTier', 'vcGroqKey', 'vcBridgeToken'
 ];
 
-// ===== Initialize =====
 document.addEventListener('DOMContentLoaded', async () => {
   await loadState();
   setupEventListeners();
 });
 
-// ===== Load ALL saved state =====
 async function loadState() {
   const state = await chrome.storage.local.get(ALL_KEYS);
 
-  // Main toggles
   activateToggle.checked = state.isActive || false;
   aiToggle.checked = state.useAI || false;
 
-  // API config
   providerSelect.value = state.provider || 'openai';
   apiToken.value = state.apiToken || '';
   customEndpoint.value = state.customEndpoint || '';
   // Store saved model before updateProviderFields populates the dropdown
   modelSelect.dataset.savedModel = state.model || '';
 
-  // Export
   exportFolderInput.value = state.exportFolder || 'BrowsingCapture';
   aiQuestionsCheckbox.checked = state.aiQuestions || false;
   sanitizeSelect.value = state.sanitizeMode || 'off';
 
-  // Settings
   excludedUrls.value = (state.excludedUrls || []).join('\n');
   minWords.value = state.minWords ?? 50;
   spaDetection.checked = state.spaDetection ?? true;
@@ -194,7 +177,6 @@ async function loadState() {
   maxTokens.value = state.maxTokens ?? 8000;
   aiDelay.value = state.aiDelay ?? 2000;
 
-  // HuggingFace
   hfTokenInput.value = state.huggingfaceToken || '';
   hfPrivateCheckbox.checked = state.hfPrivate ?? true;
   if (state.hfDatasetMode === 'existing') {
@@ -211,24 +193,20 @@ async function loadState() {
     hfTokenStatus.className = 'hf-token-status valid';
     hfDatasetSection.style.display = '';
     hfPushBtn.style.display = '';
-    // Auto-suggest dataset name from export folder
     if (!hfNewName.value) {
       hfNewName.value = (state.exportFolder || 'BrowsingCapture').toLowerCase().replace(/[^a-z0-9-]/g, '-');
     }
   }
 
-  // Dataset Builder — Brave API key
   if (state.braveApiKey) {
     dsBraveKey.value = state.braveApiKey;
     dsBraveBanner.classList.add('hidden');
   }
 
-  // Voice Commander
   if (state.vcTier) vcTierSelect.value = state.vcTier;
   if (state.vcGroqKey) vcGroqKey.value = state.vcGroqKey;
   updateVCTierFields();
 
-  // UI state
   updateCaptureStatusUI(state.isActive || false);
   updateProviderFields();
 
@@ -242,9 +220,7 @@ async function loadState() {
   renderRecentCaptures(state.recentCaptures || []);
 }
 
-// ===== Event Listeners =====
 function setupEventListeners() {
-  // Activate toggle
   activateToggle.addEventListener('change', async () => {
     const isActive = activateToggle.checked;
     const now = Date.now();
@@ -271,18 +247,15 @@ function setupEventListeners() {
     chrome.runtime.sendMessage({ type: 'TOGGLE_CAPTURE', isActive });
   });
 
-  // Provider selection — persist immediately
   providerSelect.addEventListener('change', () => {
     updateProviderFields();
     chrome.storage.local.set({ provider: providerSelect.value });
   });
 
-  // Token visibility toggle
   toggleTokenBtn.addEventListener('click', () => {
     apiToken.type = apiToken.type === 'password' ? 'text' : 'password';
   });
 
-  // Save API settings
   saveApiBtn.addEventListener('click', async () => {
     const settings = {
       provider: providerSelect.value,
@@ -301,41 +274,34 @@ function setupEventListeners() {
     showToast('API settings saved!', 'success');
   });
 
-  // AI toggle — persist immediately
   aiToggle.addEventListener('change', async () => {
     const useAI = aiToggle.checked;
     await chrome.storage.local.set({ useAI });
     chrome.runtime.sendMessage({ type: 'TOGGLE_AI', useAI });
   });
 
-  // Export folder — persist on change
   exportFolderInput.addEventListener('change', async () => {
     const folder = exportFolderInput.value.trim() || 'BrowsingCapture';
     exportFolderInput.value = folder;
     await chrome.storage.local.set({ exportFolder: folder });
   });
 
-  // AI questions checkbox — persist immediately
   aiQuestionsCheckbox.addEventListener('change', async () => {
     await chrome.storage.local.set({ aiQuestions: aiQuestionsCheckbox.checked });
   });
 
-  // Sanitize mode — persist immediately
   sanitizeSelect.addEventListener('change', async () => {
     await chrome.storage.local.set({ sanitizeMode: sanitizeSelect.value });
   });
 
-  // Export as ZIP (single file download with Save As dialog)
   exportZipBtn.addEventListener('click', async () => {
     await doExport(exportZipBtn, 'zip');
   });
 
-  // Export to folder (individual files added to Downloads folder)
   exportFolderBtn.addEventListener('click', async () => {
     await doExport(exportFolderBtn, 'folder');
   });
 
-  // Save advanced settings
   saveSettingsBtn.addEventListener('click', async () => {
     const urls = excludedUrls.value.split('\n').map(l => l.trim()).filter(Boolean);
 
@@ -352,7 +318,6 @@ function setupEventListeners() {
     showToast('Settings saved!', 'success');
   });
 
-  // Clear data
   clearDataBtn.addEventListener('click', async () => {
     if (confirm('Clear all captured data? This cannot be undone.')) {
       await chrome.storage.local.set({
@@ -368,14 +333,12 @@ function setupEventListeners() {
     }
   });
 
-  // Collapsible sections
   apiHeader.addEventListener('click', () => toggleSection(apiHeader, apiBody));
   crawlHeader.addEventListener('click', () => toggleSection(crawlHeader, crawlBody));
   hfHeader.addEventListener('click', () => toggleSection(hfHeader, hfBody));
   settingsHeader.addEventListener('click', () => toggleSection(settingsHeader, settingsBody));
   recentHeader.addEventListener('click', () => toggleSection(recentHeader, recentBody));
 
-  // === HuggingFace ===
   hfToggleTokenBtn.addEventListener('click', () => {
     hfTokenInput.type = hfTokenInput.type === 'password' ? 'text' : 'password';
   });
@@ -402,12 +365,10 @@ function setupEventListeners() {
       await chrome.storage.local.set({ huggingfaceToken: token, hfUsername: result.username });
       hfDatasetSection.style.display = '';
       hfPushBtn.style.display = '';
-      // Auto-suggest dataset name
       if (!hfNewName.value) {
         const folder = exportFolderInput.value || 'BrowsingCapture';
         hfNewName.value = folder.toLowerCase().replace(/[^a-z0-9-]/g, '-');
       }
-      // Fetch existing datasets
       fetchHFDatasets(token, result.username);
       showToast(`Connected as @${result.username}`, 'success');
     } else {
@@ -429,7 +390,6 @@ function setupEventListeners() {
     hfNewFields.classList.add('hidden');
     hfExistingFields.classList.remove('hidden');
     chrome.storage.local.set({ hfDatasetMode: 'existing' });
-    // Refresh dataset list
     const state = await chrome.storage.local.get(['huggingfaceToken', 'hfUsername']);
     if (state.huggingfaceToken && state.hfUsername) {
       fetchHFDatasets(state.huggingfaceToken, state.hfUsername);
@@ -482,9 +442,7 @@ function setupEventListeners() {
     updateHFProgressUI({ active: true, phase: 'preparing', current: 0, total: 0, currentFile: '' });
   });
 
-  // === Crawl Mode ===
 
-  // Use current tab URL button
   crawlUseCurrentBtn.addEventListener('click', async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab && tab.url) {
@@ -492,7 +450,6 @@ function setupEventListeners() {
     }
   });
 
-  // Start crawl
   crawlStartBtn.addEventListener('click', async () => {
     const url = crawlUrlInput.value.trim();
     if (!url) {
@@ -536,27 +493,22 @@ function setupEventListeners() {
     }
   });
 
-  // Stop crawl
   crawlStopBtn.addEventListener('click', async () => {
     await chrome.runtime.sendMessage({ type: 'STOP_CRAWL' });
     updateCrawlUI(false);
     showToast('Crawl stopped', 'success');
   });
 
-  // Store original button HTML for restore
   const crawlStartBtnOrigHTML = crawlStartBtn.innerHTML;
 
-  // Check if a crawl is already running
   chrome.runtime.sendMessage({ type: 'GET_CRAWL_STATUS' }, (response) => {
     if (response && response.active) {
       updateCrawlUI(true, response.seedDomain, response.pagesCrawled, response.queueSize);
     }
   });
 
-  // === Dataset Builder ===
   dsHeader.addEventListener('click', () => toggleSection(dsHeader, dsBody));
 
-  // Advanced settings toggle
   dsConfigToggle.addEventListener('click', () => {
     dsConfig.classList.toggle('hidden');
     const chevron = dsConfigToggle.querySelector('.chevron');
@@ -565,12 +517,10 @@ function setupEventListeners() {
     }
   });
 
-  // Brave key visibility toggle
   dsBraveKeyToggle.addEventListener('click', () => {
     dsBraveKey.type = dsBraveKey.type === 'password' ? 'text' : 'password';
   });
 
-  // Save Brave key
   dsSaveBraveKey.addEventListener('click', async () => {
     const key = dsBraveKey.value.trim();
     await chrome.storage.local.set({ braveApiKey: key });
@@ -584,7 +534,6 @@ function setupEventListeners() {
     }
   });
 
-  // Banner link scrolls to key input
   dsBraveBannerLink.addEventListener('click', (e) => {
     e.preventDefault();
     dsConfig.classList.remove('hidden');
@@ -594,7 +543,6 @@ function setupEventListeners() {
     dsBraveKey.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
 
-  // Start Dataset Builder
   dsStartBtn.addEventListener('click', async () => {
     const prompt = dsPrompt.value.trim();
     if (!prompt) {
@@ -636,36 +584,30 @@ function setupEventListeners() {
 
   const dsStartBtnOrigHTML = dsStartBtn.innerHTML;
 
-  // Stop Dataset Builder
   dsStopBtn.addEventListener('click', async () => {
     await chrome.runtime.sendMessage({ type: 'STOP_DATASET_BUILDER' });
     updateDatasetBuilderUI(false);
     showToast('Dataset builder stopped', 'success');
   });
 
-  // Check if dataset builder is already running
   chrome.runtime.sendMessage({ type: 'GET_DATASET_BUILDER_STATUS' }, (response) => {
     if (response && response.active) {
       updateDatasetBuilderUI(true, response);
     }
   });
 
-  // Check if an export is already running (popup reopened mid-export)
   chrome.runtime.sendMessage({ type: 'GET_EXPORT_STATUS' }, (response) => {
     if (response) updateExportProgressUI(response);
   });
 
-  // Check if AI enhancement is running
   chrome.runtime.sendMessage({ type: 'GET_ENHANCE_STATUS' }, (response) => {
     if (response && response.active) updateEnhanceStatusUI(response);
   });
 
-  // Check if HF upload is running
   chrome.runtime.sendMessage({ type: 'GET_HF_STATUS' }, (response) => {
     if (response) updateHFProgressUI(response);
   });
 
-  // Listen for updates from background
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg.type === 'CAPTURE_COMPLETE') {
       updateAfterCapture(msg.data);
@@ -685,7 +627,6 @@ function setupEventListeners() {
     if (msg.type === 'DATASET_BUILDER_STATUS') {
       updateDatasetBuilderUI(msg.active, msg);
     }
-    // Voice Commander messages
     if (msg.type === 'VC_STATUS') {
       updateVCStatusUI(msg);
     }
@@ -695,30 +636,42 @@ function setupEventListeners() {
     if (msg.type === 'VC_AUDIO_RESPONSE') {
       playVCAudioResponse(msg.audio, msg.mimeType);
     }
+    if (msg.type === 'OFFSCREEN_MIC_ERROR') {
+      showToast('Mic error: ' + msg.error, 'error');
+      vcListening = false;
+      vcMicBtn.classList.remove('listening', 'processing');
+      vcMicLabel.textContent = 'Click to speak';
+    }
   });
 
-  // === Voice Commander ===
   vcHeader.addEventListener('click', () => toggleSection(vcHeader, vcBody));
 
-  // Tier selection change
   vcTierSelect.addEventListener('change', updateVCTierFields);
 
-  // Groq key visibility toggle
   vcGroqKeyToggle.addEventListener('click', () => {
     vcGroqKey.type = vcGroqKey.type === 'password' ? 'text' : 'password';
   });
 
-  // Save voice settings
   vcSaveSettingsBtn.addEventListener('click', async () => {
     const settings = {
       tier: vcTierSelect.value,
       groqKey: vcGroqKey.value.trim(),
     };
-    await chrome.runtime.sendMessage({ type: 'VC_SAVE_SETTINGS', ...settings });
-    showToast('Voice settings saved!', 'success');
+    const result = await chrome.runtime.sendMessage({ type: 'VC_SAVE_SETTINGS', ...settings });
+
+    if (settings.tier === 'local') {
+      if (result?.localInstall) {
+        showToast('Local models installing — check companion terminal for progress', 'success');
+      } else if (result?.localInstallError) {
+        showToast('Settings saved! Start companion app to install local models.', 'success');
+      } else {
+        showToast('Voice settings saved!', 'success');
+      }
+    } else {
+      showToast('Voice settings saved!', 'success');
+    }
   });
 
-  // Mic button
   vcMicBtn.addEventListener('click', () => {
     if (vcListening) {
       stopVCListening();
@@ -727,14 +680,12 @@ function setupEventListeners() {
     }
   });
 
-  // Initialize Voice Commander on popup open
   chrome.runtime.sendMessage({ type: 'VC_INIT' }, (response) => {
     if (response) {
       updateVCServiceIndicators(response);
     }
   });
 
-  // Check if VC is already active
   chrome.runtime.sendMessage({ type: 'VC_GET_STATUS' }, (response) => {
     if (response) {
       updateVCStatusUI(response);
@@ -746,10 +697,8 @@ function setupEventListeners() {
     }
   });
 
-  // Set up companion download links with OS detection
   setupCompanionDownloadLinks();
 
-  // Check Connection button
   if (vcCheckCompanion) {
     vcCheckCompanion.addEventListener('click', async () => {
       vcCheckCompanion.textContent = 'Checking...';
@@ -759,7 +708,6 @@ function setupEventListeners() {
         if (resp.ok) {
           const data = await resp.json();
           showToast('Companion app connected!', 'success');
-          // Re-init to update indicators
           chrome.runtime.sendMessage({ type: 'VC_INIT' }, (r) => {
             if (r) updateVCServiceIndicators(r);
           });
@@ -775,7 +723,6 @@ function setupEventListeners() {
   }
 }
 
-// ===== Crawl Mode UI =====
 function updateCrawlUI(active, domain, pages, queued) {
   if (active) {
     crawlStartBtn.classList.add('hidden');
@@ -786,13 +733,11 @@ function updateCrawlUI(active, domain, pages, queued) {
   } else {
     crawlStartBtn.classList.remove('hidden');
     crawlStartBtn.disabled = false;
-    // Restore original button content
     crawlStartBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg> Start Crawl`;
     crawlStatusDiv.classList.add('hidden');
   }
 }
 
-// ===== Dataset Builder UI =====
 const DS_PHASE_LABELS = {
   idle: 'Idle',
   decomposing: 'Decomposing prompt into queries...',
@@ -823,7 +768,6 @@ function updateDatasetBuilderUI(active, data) {
     dsStatGold.textContent = stats.goldCount || 0;
     dsStatSilver.textContent = stats.silverCount || 0;
 
-    // Progress bar — estimate based on phase
     const phaseProgress = { idle: 0, decomposing: 10, searching: 30, crawling: 55, scoring: 75, exporting: 90, done: 100, error: 0 };
     dsProgressBar.style.width = `${phaseProgress[phase] || 0}%`;
 
@@ -831,7 +775,6 @@ function updateDatasetBuilderUI(active, data) {
       dsPhase.style.animation = 'none';
       dsPhase.style.color = '#D9FF6D';
       dsProgressBar.style.width = '100%';
-      // Auto-reset after 5s
       setTimeout(() => { updateDatasetBuilderUI(false); }, 5000);
     } else if (phase === 'error') {
       dsPhase.style.animation = 'none';
@@ -849,7 +792,6 @@ function updateDatasetBuilderUI(active, data) {
   }
 }
 
-// ===== Export Helper =====
 const exportProgressDiv = document.getElementById('export-progress');
 const exportProgressPhase = document.getElementById('export-progress-phase');
 const exportProgressDetail = document.getElementById('export-progress-detail');
@@ -886,7 +828,6 @@ function updateExportProgressUI(data) {
     exportProgressBar.style.width = '100%';
     exportZipBtn.disabled = false;
     exportFolderBtn.disabled = false;
-    // Auto-hide after 5s
     setTimeout(() => { exportProgressDiv.classList.add('hidden'); }, 5000);
   } else if (data.phase === 'error') {
     exportProgressDiv.classList.remove('hidden', 'done');
@@ -908,7 +849,6 @@ async function doExport(btn, mode) {
   const sanitizeMode = sanitizeSelect ? sanitizeSelect.value : 'off';
   const sanitizeVal = sanitizeMode !== 'off' ? sanitizeMode : false;
 
-  // Fire-and-forget: send export request, service worker handles it in background
   chrome.runtime.sendMessage({
     type: 'EXPORT',
     mode,
@@ -916,17 +856,14 @@ async function doExport(btn, mode) {
     sanitize: sanitizeVal,
   });
 
-  // Immediately show progress UI
   updateExportProgressUI({ active: true, phase: 'naming', current: 0, total: 0, currentTitle: '' });
 }
 
-// ===== UI Updates =====
 function updateCaptureStatusUI(isActive) {
   captureStatus.textContent = isActive ? 'Active — capturing pages' : 'Inactive';
   captureStatus.style.color = isActive ? '#BDD164' : '#666';
 }
 
-// ===== AI Enhancement Status =====
 let enhanceDoneTimer = null;
 function updateEnhanceStatusUI(data) {
   if (enhanceDoneTimer) { clearTimeout(enhanceDoneTimer); enhanceDoneTimer = null; }
@@ -995,7 +932,6 @@ function updateProviderFields() {
     apiToken.disabled = false;
   }
 
-  // Populate model dropdown
   const models = PROVIDER_MODELS[provider] || [];
   modelSelect.innerHTML = '';
   for (const [value, label] of models) {
@@ -1005,7 +941,6 @@ function updateProviderFields() {
     modelSelect.appendChild(opt);
   }
 
-  // Restore saved model if it matches this provider's options
   if (savedModel && models.some(([v]) => v === savedModel)) {
     modelSelect.value = savedModel;
   }
@@ -1066,13 +1001,11 @@ function renderRecentCaptures(captures) {
   });
 }
 
-// ===== Collapsible =====
 function toggleSection(header, body) {
   header.classList.toggle('collapsed');
   body.classList.toggle('hidden');
 }
 
-// ===== Session Timer =====
 function startSessionTimer() {
   updateSessionTime();
   sessionTimer = setInterval(updateSessionTime, 60000);
@@ -1096,7 +1029,6 @@ function updateSessionTime() {
   }
 }
 
-// ===== Toast =====
 function showToast(message, type = 'success') {
   toast.textContent = message;
   toast.className = `toast ${type}`;
@@ -1104,7 +1036,6 @@ function showToast(message, type = 'success') {
   setTimeout(() => toast.classList.add('hidden'), 3000);
 }
 
-// ===== Utilities =====
 function formatNumber(num) {
   return num.toLocaleString();
 }
@@ -1125,7 +1056,6 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-// ===== HuggingFace Helpers =====
 async function fetchHFDatasets(token, username) {
   hfExistingSelect.innerHTML = '<option value="">Loading...</option>';
   const result = await chrome.runtime.sendMessage({ type: 'FETCH_HF_DATASETS', token, username });
@@ -1154,14 +1084,12 @@ const HF_PHASE_LABELS = {
   error: 'Upload failed',
 };
 
-// ===== Voice Commander Helpers =====
 
 function updateVCTierFields() {
   const tier = vcTierSelect.value;
   vcGroqField.classList.toggle('hidden', tier !== 'groq');
   vcOpenaiNotice.classList.toggle('hidden', tier !== 'openai_realtime');
 
-  // Update status bar labels
   if (tier === 'openai_realtime') {
     vcIndStt.querySelector('.vc-dot').nextSibling.textContent = 'Realtime';
     vcIndLlm.classList.add('hidden');
@@ -1227,7 +1155,6 @@ function appendVCTranscript(entry) {
   vcTranscript.scrollTop = vcTranscript.scrollHeight;
 }
 
-// ===== Companion Download Links (OS Detection) =====
 
 const COMPANION_REPO = 'thedefaultman/Zahhak-crawler';
 const COMPANION_TAG = 'latest';
@@ -1257,13 +1184,11 @@ function detectPlatform() {
 function setupCompanionDownloadLinks() {
   const platform = detectPlatform();
 
-  // Set recommended download button
   if (vcDlRecommended) {
     vcDlRecommended.href = getCompanionDownloadURL(platform.key);
     vcDlRecommendedLabel.textContent = platform.label;
   }
 
-  // Set all platform links
   const platformLinks = document.querySelectorAll('.vc-platform-link');
   platformLinks.forEach(link => {
     const plat = link.getAttribute('data-platform');
@@ -1277,7 +1202,6 @@ function setupCompanionDownloadLinks() {
 async function startVCListening() {
   const tier = vcTierSelect.value;
 
-  // Validate settings
   if (tier === 'groq' && !vcGroqKey.value.trim()) {
     showToast('Enter your Groq API key first', 'error');
     return;
@@ -1286,16 +1210,27 @@ async function startVCListening() {
   try {
     if (tier === 'openai_realtime') {
       await startVCRealtimeSession();
+      vcListening = true;
+      vcMicBtn.classList.add('listening');
+      vcMicLabel.textContent = 'Listening... click to stop';
+      chrome.runtime.sendMessage({ type: 'VC_START_LISTENING', tier });
     } else {
-      await startVCMicCapture();
+      // Content script injection handles mic capture (popups can't access getUserMedia)
+      vcMicBtn.classList.add('listening');
+      vcMicLabel.textContent = 'Starting mic...';
+
+      const result = await chrome.runtime.sendMessage({ type: 'VC_REQUEST_MIC', tier });
+      if (result && result.success === false) {
+        throw new Error(result.error || 'Failed to start mic capture');
+      }
+
+      vcListening = true;
+      vcMicLabel.textContent = 'Listening... click to stop';
+      chrome.runtime.sendMessage({ type: 'VC_START_LISTENING', tier });
     }
-
-    vcListening = true;
-    vcMicBtn.classList.add('listening');
-    vcMicLabel.textContent = 'Listening... click to stop';
-
-    chrome.runtime.sendMessage({ type: 'VC_START_LISTENING', tier });
   } catch (err) {
+    vcMicBtn.classList.remove('listening', 'processing');
+    vcMicLabel.textContent = 'Click to speak';
     showToast('Mic error: ' + err.message, 'error');
   }
 }
@@ -1303,24 +1238,8 @@ async function startVCListening() {
 function stopVCListening() {
   vcListening = false;
 
-  // Stop media recorder
-  if (vcMediaRecorder && vcMediaRecorder.state !== 'inactive') {
-    vcMediaRecorder.stop();
-  }
-  if (vcAudioStream) {
-    vcAudioStream.getTracks().forEach(t => t.stop());
-    vcAudioStream = null;
-  }
-  if (vcAudioContext) {
-    vcAudioContext.close();
-    vcAudioContext = null;
-  }
-  if (vcSilenceTimer) {
-    clearTimeout(vcSilenceTimer);
-    vcSilenceTimer = null;
-  }
+  chrome.runtime.sendMessage({ type: 'VC_STOP_MIC' });
 
-  // Stop WebRTC for Realtime tier
   if (vcRealtimePc) {
     vcRealtimePc.close();
     vcRealtimePc = null;
@@ -1332,117 +1251,7 @@ function stopVCListening() {
   chrome.runtime.sendMessage({ type: 'VC_STOP_LISTENING' });
 }
 
-async function startVCMicCapture() {
-  // Request microphone access
-  vcAudioStream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      sampleRate: 16000,
-      channelCount: 1,
-      echoCancellation: true,
-      noiseSuppression: true,
-    }
-  });
-
-  // Set up audio analysis for simple VAD
-  vcAudioContext = new AudioContext({ sampleRate: 16000 });
-  const source = vcAudioContext.createMediaStreamSource(vcAudioStream);
-  vcAnalyser = vcAudioContext.createAnalyser();
-  vcAnalyser.fftSize = 512;
-  source.connect(vcAnalyser);
-
-  // Use MediaRecorder for encoding
-  vcMediaRecorder = new MediaRecorder(vcAudioStream, {
-    mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-      ? 'audio/webm;codecs=opus'
-      : 'audio/webm',
-  });
-
-  vcAudioChunks = [];
-  let isRecording = false;
-  let silenceStart = null;
-  const SILENCE_THRESHOLD = 0.015;
-  const SILENCE_DURATION = 1200; // ms of silence before sending
-  const MIN_RECORDING_DURATION = 500; // ms minimum to avoid noise bursts
-
-  vcMediaRecorder.ondataavailable = (e) => {
-    if (e.data.size > 0) {
-      vcAudioChunks.push(e.data);
-    }
-  };
-
-  vcMediaRecorder.onstop = async () => {
-    if (vcAudioChunks.length === 0) return;
-
-    const blob = new Blob(vcAudioChunks, { type: 'audio/webm' });
-    vcAudioChunks = [];
-
-    if (blob.size < 1000) return; // Too small, likely noise
-
-    // Convert to base64 and send to service worker
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64 = reader.result.split(',')[1];
-      chrome.runtime.sendMessage({ type: 'VC_AUDIO_CHUNK', audio: base64 });
-    };
-    reader.readAsDataURL(blob);
-  };
-
-  // Start recording
-  vcMediaRecorder.start(100); // Collect in 100ms chunks
-  isRecording = true;
-
-  // Simple VAD loop — detect silence and trigger send
-  const dataArray = new Uint8Array(vcAnalyser.frequencyBinCount);
-
-  function checkVolume() {
-    if (!vcListening || !vcAnalyser) return;
-
-    vcAnalyser.getByteTimeDomainData(dataArray);
-
-    // Calculate RMS volume
-    let sum = 0;
-    for (let i = 0; i < dataArray.length; i++) {
-      const normalized = (dataArray[i] - 128) / 128;
-      sum += normalized * normalized;
-    }
-    const rms = Math.sqrt(sum / dataArray.length);
-
-    if (rms > SILENCE_THRESHOLD) {
-      // Speech detected
-      silenceStart = null;
-    } else {
-      // Silence detected
-      if (!silenceStart) {
-        silenceStart = Date.now();
-      } else if (Date.now() - silenceStart > SILENCE_DURATION && isRecording) {
-        // Enough silence — stop and send, then restart
-        isRecording = false;
-        vcMediaRecorder.stop();
-
-        // Restart recording after a short pause
-        setTimeout(() => {
-          if (vcListening && vcMediaRecorder && vcAudioStream) {
-            vcAudioChunks = [];
-            try {
-              vcMediaRecorder.start(100);
-              isRecording = true;
-              silenceStart = null;
-            } catch (e) {
-              // Stream might have been closed
-            }
-          }
-        }, 200);
-      }
-    }
-
-    requestAnimationFrame(checkVolume);
-  }
-
-  checkVolume();
-}
-
 async function startVCRealtimeSession() {
-  // Get ephemeral token from service worker
   const response = await chrome.runtime.sendMessage({ type: 'VC_GET_EPHEMERAL_TOKEN' });
   if (!response.success) {
     throw new Error(response.error || 'Failed to get ephemeral token');
@@ -1453,22 +1262,18 @@ async function startVCRealtimeSession() {
     throw new Error('No ephemeral token received');
   }
 
-  // Create WebRTC peer connection
   const pc = new RTCPeerConnection();
   vcRealtimePc = pc;
 
-  // Get mic audio
   vcAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   vcAudioStream.getTracks().forEach(track => pc.addTrack(track, vcAudioStream));
 
-  // Create audio output element
   const audioEl = document.createElement('audio');
   audioEl.autoplay = true;
   pc.ontrack = (e) => {
     audioEl.srcObject = e.streams[0];
   };
 
-  // Set up data channel for events
   const dc = pc.createDataChannel('oai-events');
   dc.addEventListener('message', (e) => {
     try {
@@ -1479,7 +1284,6 @@ async function startVCRealtimeSession() {
     }
   });
 
-  // Create offer and connect
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
 
@@ -1504,21 +1308,18 @@ async function startVCRealtimeSession() {
 function handleRealtimeEvent(event, dc) {
   switch (event.type) {
     case 'response.audio_transcript.done':
-      // Model finished speaking — show transcript
       if (event.transcript) {
         appendVCTranscript({ role: 'assistant', text: event.transcript, timestamp: Date.now() });
       }
       break;
 
     case 'conversation.item.input_audio_transcription.completed':
-      // User speech transcribed
       if (event.transcript) {
         appendVCTranscript({ role: 'user', text: event.transcript, timestamp: Date.now() });
       }
       break;
 
     case 'response.function_call_arguments.done':
-      // Model wants to call a tool
       (async () => {
         const toolName = event.name;
         let toolArgs = {};
@@ -1531,7 +1332,6 @@ function handleRealtimeEvent(event, dc) {
           args: toolArgs,
         });
 
-        // Send tool output back to model
         const toolOutput = {
           type: 'conversation.item.create',
           item: {
@@ -1587,7 +1387,6 @@ function updateHFProgressUI(data) {
     hfProgressDetail.textContent = data.result.repoId;
     hfProgressBar.style.width = '100%';
     hfPushBtn.disabled = false;
-    // Show links
     hfLinksDiv.classList.remove('hidden');
     hfLinkDataset.href = data.result.datasetUrl;
     hfLinkAutotrain.href = data.result.autotrainUrl;

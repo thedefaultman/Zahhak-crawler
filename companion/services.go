@@ -12,14 +12,14 @@ import (
 	"time"
 )
 
-// ServiceManager manages all background services
+// ServiceManager owns the lifecycle of PinchTab, Whisper, and Llamafile subprocesses.
 type ServiceManager struct {
 	config   Config
 	mu       sync.RWMutex
 	services map[string]*ManagedService
 }
 
-// ManagedService represents a single background process
+// ManagedService tracks a subprocess managed by ServiceManager.
 type ManagedService struct {
 	Name       string
 	Port       int
@@ -30,14 +30,12 @@ type ManagedService struct {
 	BinaryPath string
 }
 
-// NewServiceManager creates a new service manager
 func NewServiceManager(cfg Config) *ServiceManager {
 	sm := &ServiceManager{
 		config:   cfg,
 		services: make(map[string]*ManagedService),
 	}
 
-	// Register services
 	sm.services["pinchtab"] = &ManagedService{
 		Name:       "pinchtab",
 		Port:       cfg.PinchTabPort,
@@ -46,7 +44,7 @@ func NewServiceManager(cfg Config) *ServiceManager {
 	sm.services["whisper"] = &ManagedService{
 		Name:       "whisper",
 		Port:       cfg.WhisperPort,
-		BinaryPath: sm.binaryPath("whisper-server"),
+		BinaryPath: sm.binaryPath("whisperfile"),
 	}
 	sm.services["llamafile"] = &ManagedService{
 		Name:       "llamafile",
@@ -54,7 +52,6 @@ func NewServiceManager(cfg Config) *ServiceManager {
 		BinaryPath: sm.binaryPath("llamafile"),
 	}
 
-	// Check which binaries are installed
 	for _, svc := range sm.services {
 		if _, err := os.Stat(svc.BinaryPath); err == nil {
 			svc.Installed = true
@@ -64,7 +61,7 @@ func NewServiceManager(cfg Config) *ServiceManager {
 	return sm
 }
 
-// RefreshInstallStatus re-checks which binaries are installed (call after auto-install)
+// RefreshInstallStatus should be called after autoInstall to update installed flags.
 func (sm *ServiceManager) RefreshInstallStatus() {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
@@ -84,14 +81,14 @@ func (sm *ServiceManager) binaryPath(name string) string {
 	return filepath.Join(sm.config.DataDir, "bin", name+ext)
 }
 
-// StartPinchTab starts the PinchTab browser automation service
+// StartPinchTab launches the PinchTab subprocess and blocks until it is ready.
 func (sm *ServiceManager) StartPinchTab() error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
 	svc := sm.services["pinchtab"]
 	if svc.Running {
-		return nil // Already running
+		return nil
 	}
 
 	if !svc.Installed {
@@ -105,6 +102,7 @@ func (sm *ServiceManager) StartPinchTab() error {
 		fmt.Sprintf("BRIDGE_TOKEN=%s", sm.config.BridgeToken),
 		"BRIDGE_HEADLESS=true",
 		"BRIDGE_BIND=127.0.0.1",
+		"BRIDGE_NO_RESTORE=true",
 	)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -119,10 +117,8 @@ func (sm *ServiceManager) StartPinchTab() error {
 	svc.Error = ""
 	log.Printf("[PinchTab] Started on port %d (PID %d)", svc.Port, cmd.Process.Pid)
 
-	// Monitor process in background
 	go sm.monitor("pinchtab", cmd)
 
-	// Wait for it to be ready
 	sm.mu.Unlock()
 	ready := sm.waitForReady(svc.Port, 10*time.Second)
 	sm.mu.Lock()
@@ -135,7 +131,7 @@ func (sm *ServiceManager) StartPinchTab() error {
 	return nil
 }
 
-// StartWhisper starts the whisper.cpp server
+// StartWhisper launches the Whisperfile speech-to-text subprocess.
 func (sm *ServiceManager) StartWhisper() error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
@@ -149,10 +145,10 @@ func (sm *ServiceManager) StartWhisper() error {
 		return fmt.Errorf("Whisper binary not found at %s", svc.BinaryPath)
 	}
 
-	modelPath := filepath.Join(sm.config.DataDir, "models", "ggml-tiny.en.bin")
 	cmd := exec.Command(svc.BinaryPath,
+		"--server",
 		"--port", fmt.Sprintf("%d", svc.Port),
-		"--model", modelPath,
+		"--host", "127.0.0.1",
 		"--threads", "4",
 	)
 	cmd.Stdout = os.Stdout
@@ -172,7 +168,7 @@ func (sm *ServiceManager) StartWhisper() error {
 	return nil
 }
 
-// StartLlamafile starts the llamafile LLM server
+// StartLlamafile launches the Llamafile LLM inference subprocess.
 func (sm *ServiceManager) StartLlamafile() error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
@@ -210,7 +206,6 @@ func (sm *ServiceManager) StartLlamafile() error {
 	return nil
 }
 
-// StopAll stops all running services
 func (sm *ServiceManager) StopAll() {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
@@ -225,7 +220,6 @@ func (sm *ServiceManager) StopAll() {
 	}
 }
 
-// GetStatus returns the status of a service
 func (sm *ServiceManager) GetStatus(name string) ServiceStatus {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
@@ -270,13 +264,15 @@ func (sm *ServiceManager) monitor(name string, cmd *exec.Cmd) {
 	}
 }
 
-// waitForReady polls a port until it responds to HTTP
+// waitForReady polls a port until any HTTP response is received or the timeout expires.
 func (sm *ServiceManager) waitForReady(port int, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	client := &http.Client{Timeout: 1 * time.Second}
 
 	for time.Now().Before(deadline) {
-		resp, err := client.Get(fmt.Sprintf("http://localhost:%d/", port))
+		req, _ := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/health", port), nil)
+		req.Header.Set("Authorization", "Bearer "+sm.config.BridgeToken)
+		resp, err := client.Do(req)
 		if err == nil {
 			resp.Body.Close()
 			return true

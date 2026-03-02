@@ -14,7 +14,7 @@ A Chrome extension that captures web pages as training data and lets you control
 
 | Tier | Cost | Latency | What You Need |
 |------|------|---------|---------------|
-| **Local** | Free | ~2-3s | Companion app with `--tier local` (downloads Whisper.cpp + Llamafile) |
+| **Local** | Free | ~2-3s | Companion app with `--tier local` (downloads Whisperfile + Llamafile) |
 | **Groq** | Free tier available | ~1s | Groq API key from [console.groq.com](https://console.groq.com) |
 | **OpenAI Realtime** | ~$0.06-0.24/min | Real-time | OpenAI API key |
 
@@ -42,7 +42,7 @@ For the free local tier (no API keys, fully offline), run the companion with:
 ./voice-commander --tier local
 ```
 
-This downloads Whisper.cpp (~39MB), the Whisper model, and Llamafile (~2.2GB) on first run.
+This downloads Whisperfile (~87MB) and Llamafile (~2.4GB) on first run.
 
 ### 3. Configure API Keys (optional)
 
@@ -110,7 +110,7 @@ Zahhak-crawler/
 The companion is a single Go binary that manages all the local services Voice Commander needs:
 
 1. **On first run**: auto-downloads PinchTab (~12MB) for browser automation
-2. **With `--tier local`**: also downloads Whisper.cpp server, Whisper model (~39MB), and Llamafile (~2.2GB)
+2. **With `--tier local`**: also downloads Whisperfile (~87MB) and Llamafile (~2.4GB)
 3. **Starts services**: PinchTab on port 9867, health API on port 9868
 4. **Health endpoint**: The extension polls `localhost:9868/health` to check service status
 5. **Bridge token**: Auto-generated auth token shared between companion and extension

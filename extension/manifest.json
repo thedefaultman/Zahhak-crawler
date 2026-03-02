@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Browsing Capture → Training Data",
-  "version": "1.0.0",
-  "description": "Capture web pages as Obsidian-style markdown and export as JSONL training data for AI models",
+  "name": "Zahhak Crawler",
+  "version": "0.2.0",
+  "description": "AI-powered web scraping, voice-controlled browser automation, and browsing capture for training data",
 
   "permissions": [
     "activeTab",
