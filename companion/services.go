@@ -103,7 +103,7 @@ func (sm *ServiceManager) StartPinchTab() error {
 		fmt.Sprintf("BRIDGE_PORT=%d", svc.Port),
 		fmt.Sprintf("BRIDGE_TOKEN=%s", sm.config.BridgeToken),
 		fmt.Sprintf("BRIDGE_PROFILE=%s", profileDir),
-		"BRIDGE_HEADLESS=true",
+		"BRIDGE_HEADLESS=false",
 		"BRIDGE_BIND=127.0.0.1",
 		"BRIDGE_NO_RESTORE=true",
 	)

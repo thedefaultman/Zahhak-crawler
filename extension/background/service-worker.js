@@ -353,7 +353,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return true;
 
     case 'VC_REQUEST_MIC':
-      // Inject mic capture script into active tab
+      // Inject mic capture script into active tab (local or realtime)
       (async () => {
         try {
           const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -367,9 +367,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             return;
           }
           voiceCommanderState.micTabId = tab.id;
+
+          // Choose script based on tier
+          const script = msg.tier === 'openai_realtime'
+            ? 'content/realtime-session.js'
+            : 'content/mic-capture.js';
+
           await chrome.scripting.executeScript({
             target: { tabId: tab.id },
-            files: ['content/mic-capture.js'],
+            files: [script],
           });
           sendResponse({ success: true });
         } catch (err) {
@@ -389,8 +395,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       break;
 
     case 'OFFSCREEN_MIC_STARTED':
-      // Content script confirms mic is active — notify popup
+    case 'REALTIME_SESSION_STARTED':
+      // Content script confirms mic/realtime session is active — notify popup
       broadcastVCStatus();
+      break;
+
+    case 'VC_REALTIME_TRANSCRIPT':
+      // Transcript events from the realtime content script
+      addTranscriptEntry(msg.role || 'assistant', msg.text || '', msg.role === 'action' ? 'error' : undefined);
       break;
 
     case 'OFFSCREEN_MIC_ERROR':
@@ -2353,17 +2365,51 @@ async function ptNavigate(targetUrl) {
 }
 
 async function ptSnapshot() {
-  const resp = await ptFetch('/snapshot');
+  // filter=interactive: only buttons/links/inputs (~75% fewer nodes)
+  // format=compact: ~60% token reduction
+  const resp = await ptFetch('/snapshot?filter=interactive&format=compact');
   return resp.json();
 }
 
-async function ptAction(kind, ref, value) {
-  const body = { kind, ref };
-  if (value !== undefined) body.value = value;
+async function ptAction(kind, ref, extra) {
+  const body = { kind };
+  if (ref) body.ref = ref;
+
+  // PinchTab uses different keys per action kind
+  if (extra !== undefined) {
+    switch (kind) {
+      case 'fill':
+      case 'type':
+      case 'humanType':
+        body.text = extra;
+        break;
+      case 'scroll':
+        body.direction = extra;
+        break;
+      case 'press':
+        body.key = extra;
+        break;
+      case 'select':
+        body.value = extra;
+        break;
+      default:
+        body.value = extra;
+    }
+  }
+
   const resp = await ptFetch('/action', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+  });
+  return resp.json();
+}
+
+async function ptEvaluate(expression) {
+  const resp = await ptFetch('/evaluate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expression }),
   });
   return resp.json();
 }
@@ -2531,7 +2577,7 @@ async function executeVCTool(name, args) {
         break;
       }
       case 'go_back': {
-        await ptAction('back', '');
+        await ptEvaluate('window.history.back()');
         result.success = true;
         result.output = 'Went back';
         break;
@@ -2539,8 +2585,15 @@ async function executeVCTool(name, args) {
       case 'search_web': {
         const searchUrl = `https://search.brave.com/search?q=${encodeURIComponent(args.query)}`;
         await ptNavigate(searchUrl);
+        // Wait for results to load, then read them back
+        try {
+          const searchText = await ptText();
+          const textStr = typeof searchText === 'string' ? searchText : JSON.stringify(searchText);
+          result.output = `Search results for "${args.query}":\n${textStr.substring(0, 3000)}`;
+        } catch (e) {
+          result.output = `Searched for: ${args.query} (results page loaded)`;
+        }
         result.success = true;
-        result.output = `Searched for: ${args.query}`;
         break;
       }
       default:

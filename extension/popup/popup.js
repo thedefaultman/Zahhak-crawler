@@ -107,13 +107,6 @@ const vcPttHint = document.getElementById('vc-ptt-hint');
 const vcTranscript = document.getElementById('vc-transcript');
 
 let vcListening = false;
-let vcMediaRecorder = null;
-let vcAudioStream = null;
-let vcAudioChunks = [];
-let vcSilenceTimer = null;
-let vcAudioContext = null;
-let vcAnalyser = null;
-let vcRealtimePc = null; // WebRTC peer connection for OpenAI Realtime
 
 const excludedUrls = document.getElementById('excluded-urls');
 const minWords = document.getElementById('min-words');
@@ -629,9 +622,6 @@ function setupEventListeners() {
     }
     if (msg.type === 'VC_TRANSCRIPT') {
       appendVCTranscript(msg.entry);
-    }
-    if (msg.type === 'VC_AUDIO_RESPONSE') {
-      playVCAudioResponse(msg.audio, msg.mimeType);
     }
     if (msg.type === 'OFFSCREEN_MIC_ERROR') {
       showToast('Mic error: ' + msg.error, 'error');
@@ -1184,28 +1174,26 @@ async function startVCListening() {
   const tier = vcTierSelect.value;
 
   try {
-    if (tier === 'openai_realtime') {
-      await startVCRealtimeSession();
-      vcListening = true;
-      vcMicBtn.classList.add('listening');
-      vcMicLabel.textContent = 'Mic active — click to stop';
-      vcPttHint.classList.remove('hidden');
-      chrome.runtime.sendMessage({ type: 'VC_START_LISTENING', tier });
-    } else {
-      // Content script injection handles mic capture (popups can't access getUserMedia)
-      vcMicBtn.classList.add('listening');
-      vcMicLabel.textContent = 'Starting mic...';
+    // All tiers use content script injection (popups can't access getUserMedia)
+    vcMicBtn.classList.add('listening');
+    vcMicLabel.textContent = 'Starting mic...';
 
-      const result = await chrome.runtime.sendMessage({ type: 'VC_REQUEST_MIC', tier });
-      if (result && result.success === false) {
-        throw new Error(result.error || 'Failed to start mic capture');
-      }
-
-      vcListening = true;
-      vcMicLabel.textContent = 'Mic active — click to stop';
-      vcPttHint.classList.remove('hidden');
-      chrome.runtime.sendMessage({ type: 'VC_START_LISTENING', tier });
+    const result = await chrome.runtime.sendMessage({ type: 'VC_REQUEST_MIC', tier });
+    if (result && result.success === false) {
+      throw new Error(result.error || 'Failed to start mic capture');
     }
+
+    vcListening = true;
+    vcMicLabel.textContent = 'Mic active — click to stop';
+
+    // Show PTT hint for local mode only (OpenAI Realtime uses server VAD)
+    if (tier === 'openai_realtime') {
+      vcPttHint.classList.add('hidden');
+    } else {
+      vcPttHint.classList.remove('hidden');
+    }
+
+    chrome.runtime.sendMessage({ type: 'VC_START_LISTENING', tier });
   } catch (err) {
     vcMicBtn.classList.remove('listening', 'processing');
     vcMicLabel.textContent = 'Click to enable mic';
@@ -1219,136 +1207,11 @@ function stopVCListening() {
 
   chrome.runtime.sendMessage({ type: 'VC_STOP_MIC' });
 
-  if (vcRealtimePc) {
-    vcRealtimePc.close();
-    vcRealtimePc = null;
-  }
-
   vcMicBtn.classList.remove('listening', 'processing');
   vcMicLabel.textContent = 'Click to enable mic';
   vcPttHint.classList.add('hidden');
 
   chrome.runtime.sendMessage({ type: 'VC_STOP_LISTENING' });
-}
-
-async function startVCRealtimeSession() {
-  const response = await chrome.runtime.sendMessage({ type: 'VC_GET_EPHEMERAL_TOKEN' });
-  if (!response.success) {
-    throw new Error(response.error || 'Failed to get ephemeral token');
-  }
-
-  const ephemeralToken = response.client_secret?.value;
-  if (!ephemeralToken) {
-    throw new Error('No ephemeral token received');
-  }
-
-  const pc = new RTCPeerConnection();
-  vcRealtimePc = pc;
-
-  vcAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  vcAudioStream.getTracks().forEach(track => pc.addTrack(track, vcAudioStream));
-
-  const audioEl = document.createElement('audio');
-  audioEl.autoplay = true;
-  pc.ontrack = (e) => {
-    audioEl.srcObject = e.streams[0];
-  };
-
-  const dc = pc.createDataChannel('oai-events');
-  dc.addEventListener('message', (e) => {
-    try {
-      const event = JSON.parse(e.data);
-      handleRealtimeEvent(event, dc);
-    } catch (err) {
-      console.warn('[VC Realtime] Event parse error:', err);
-    }
-  });
-
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-
-  const model = 'gpt-4o-realtime-preview-2024-12-17';
-  const sdpResp = await fetch(`https://api.openai.com/v1/realtime?model=${model}`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${ephemeralToken}`,
-      'Content-Type': 'application/sdp',
-    },
-    body: offer.sdp,
-  });
-
-  if (!sdpResp.ok) {
-    throw new Error(`WebRTC SDP exchange failed: ${sdpResp.status}`);
-  }
-
-  const answerSdp = await sdpResp.text();
-  await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
-}
-
-function handleRealtimeEvent(event, dc) {
-  switch (event.type) {
-    case 'response.audio_transcript.done':
-      if (event.transcript) {
-        appendVCTranscript({ role: 'assistant', text: event.transcript, timestamp: Date.now() });
-      }
-      break;
-
-    case 'conversation.item.input_audio_transcription.completed':
-      if (event.transcript) {
-        appendVCTranscript({ role: 'user', text: event.transcript, timestamp: Date.now() });
-      }
-      break;
-
-    case 'response.function_call_arguments.done':
-      (async () => {
-        const toolName = event.name;
-        let toolArgs = {};
-        try { toolArgs = JSON.parse(event.arguments || '{}'); } catch (e) {}
-
-        // Execute via service worker (which talks to PinchTab)
-        const result = await chrome.runtime.sendMessage({
-          type: 'VC_TOOL_CALL',
-          toolName,
-          args: toolArgs,
-        });
-
-        const toolOutput = {
-          type: 'conversation.item.create',
-          item: {
-            type: 'function_call_output',
-            call_id: event.call_id,
-            output: JSON.stringify(result?.result || { error: 'Tool execution failed' }),
-          },
-        };
-        dc.send(JSON.stringify(toolOutput));
-
-        // Tell model to continue generating response
-        dc.send(JSON.stringify({ type: 'response.create' }));
-      })();
-      break;
-
-    case 'error':
-      console.error('[VC Realtime] Error:', event.error);
-      appendVCTranscript({ role: 'action', text: `Error: ${event.error?.message || 'Unknown'}`, timestamp: Date.now() });
-      break;
-  }
-}
-
-function playVCAudioResponse(base64Audio, mimeType) {
-  try {
-    const byteChars = atob(base64Audio);
-    const byteArray = new Uint8Array(byteChars.length);
-    for (let i = 0; i < byteChars.length; i++) {
-      byteArray[i] = byteChars.charCodeAt(i);
-    }
-    const blob = new Blob([byteArray], { type: mimeType || 'audio/wav' });
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    audio.play();
-    audio.onended = () => URL.revokeObjectURL(url);
-  } catch (err) {
-    console.warn('[VC] Audio playback error:', err);
-  }
 }
 
 function updateHFProgressUI(data) {
