@@ -2303,7 +2303,31 @@ let voiceCommanderState = {
 };
 
 
+async function ensureBridgeToken() {
+  if (voiceCommanderState.bridgeToken) return;
+  // Try loading from storage first
+  try {
+    const stored = await chrome.storage.local.get(['vcBridgeToken']);
+    if (stored.vcBridgeToken) {
+      voiceCommanderState.bridgeToken = stored.vcBridgeToken;
+      return;
+    }
+  } catch (e) {}
+  // Fall back to fetching from companion health endpoint
+  try {
+    const resp = await fetch(`http://localhost:${voiceCommanderState.companionHealthPort}/health`);
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data.bridgeToken) {
+        voiceCommanderState.bridgeToken = data.bridgeToken;
+        await chrome.storage.local.set({ vcBridgeToken: data.bridgeToken });
+      }
+    }
+  } catch (e) {}
+}
+
 async function ptFetch(path, options = {}) {
+  await ensureBridgeToken();
   const port = voiceCommanderState.pinchtabPort;
   const token = voiceCommanderState.bridgeToken;
   const url = `http://localhost:${port}${path}`;
@@ -2552,24 +2576,31 @@ async function processAudioLocal(audioBase64) {
   broadcastVCStatus();
 
   try {
-    const audioBlob = base64ToBlob(audioBase64, 'audio/webm');
+    const audioBlob = base64ToBlob(audioBase64, 'audio/wav');
+    console.log('[VoiceCommander] Sending WAV to Whisperfile: base64 len =', audioBase64.length,
+      ', blob size =', audioBlob.size, 'bytes');
     const formData = new FormData();
-    formData.append('file', audioBlob, 'audio.webm');
+    formData.append('file', audioBlob, 'audio.wav');
     formData.append('response_format', 'json');
 
-    const sttResp = await fetch('http://localhost:8081/inference', {
+    const sttResp = await fetch('http://127.0.0.1:8081/inference', {
       method: 'POST',
       body: formData,
     });
 
     if (!sttResp.ok) {
-      throw new Error(`Local STT failed: ${sttResp.status}`);
+      const errBody = await sttResp.text().catch(() => '');
+      console.error('[VoiceCommander] STT response:', sttResp.status, errBody);
+      throw new Error(`Local STT failed: ${sttResp.status} ${errBody}`);
     }
 
     const sttResult = await sttResp.json();
     const userText = (sttResult.text || sttResult.segments?.map(s => s.text).join(' ') || '').trim();
+    console.log('[VoiceCommander] STT result:', JSON.stringify(sttResult).substring(0, 300));
+    console.log('[VoiceCommander] Transcribed text:', userText);
 
     if (!userText) {
+      console.log('[VoiceCommander] Empty transcription, skipping');
       voiceCommanderState.processing = false;
       broadcastVCStatus();
       return;
@@ -2584,12 +2615,16 @@ async function processAudioLocal(audioBase64) {
       pageContext = typeof snapshot === 'string'
         ? snapshot.substring(0, 1500)
         : JSON.stringify(snapshot).substring(0, 1500);
-    } catch (e) {}
+      console.log('[VoiceCommander] Page context length:', pageContext.length);
+    } catch (e) {
+      console.warn('[VoiceCommander] Failed to get page context:', e.message);
+    }
 
     // Step 3: LLM via local llamafile (OpenAI-compatible format)
     const systemPrompt = getVCSystemPrompt(pageContext) +
-      '\n\nIMPORTANT: When you want to use a tool, respond with JSON: {"tool": "tool_name", "args": {...}}. ' +
-      'When you want to speak to the user (no tool), respond with plain text.';
+      '\n\nIMPORTANT: When you want to use a tool, respond ONLY with the JSON object: {"tool": "tool_name", "args": {...}}. ' +
+      'Do NOT wrap it in code blocks or add any text before or after the JSON. ' +
+      'When you want to speak to the user (no tool needed), respond with plain text only.';
 
     const messages = [
       { role: 'system', content: systemPrompt },
@@ -2601,38 +2636,54 @@ async function processAudioLocal(audioBase64) {
     let maxToolRounds = 5;
 
     for (let round = 0; round < maxToolRounds; round++) {
-      const chatResp = await fetch('http://localhost:8080/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'local',
-          messages,
-          max_tokens: 512,
-          temperature: 0.3,
-        }),
-      });
+      console.log(`[VoiceCommander] LLM round ${round + 1}/${maxToolRounds}`);
+
+      let chatResp;
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 120000); // 2 min timeout
+        chatResp = await fetch('http://127.0.0.1:8080/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'local',
+            messages,
+            max_tokens: 150,
+            temperature: 0.2,
+          }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+      } catch (fetchErr) {
+        const msg = fetchErr.name === 'AbortError'
+          ? 'Llamafile took too long (>2 min). It may be running on CPU only — restart companion to try GPU.'
+          : 'Llamafile not reachable on port 8080 — it may have crashed. Check companion terminal.';
+        console.error('[VoiceCommander] LLM fetch error:', fetchErr.message);
+        throw new Error(msg);
+      }
 
       if (!chatResp.ok) {
+        const errBody = await chatResp.text().catch(() => '');
+        console.error('[VoiceCommander] LLM error:', chatResp.status, errBody);
         throw new Error(`Local LLM failed: ${chatResp.status}`);
       }
 
       const chatResult = await chatResp.json();
       const content = chatResult.choices?.[0]?.message?.content || '';
+      console.log('[VoiceCommander] LLM response:', content.substring(0, 300));
 
-      // Try to parse as tool call JSON
-      try {
-        const parsed = JSON.parse(content.trim());
-        if (parsed.tool) {
-          const toolResult = await executeVCTool(parsed.tool, parsed.args || {});
-          addTranscriptEntry('action', toolResult.output, parsed.tool);
-          messages.push(
-            { role: 'assistant', content },
-            { role: 'user', content: `Tool result: ${JSON.stringify(toolResult)}. Continue or respond to the user.` }
-          );
-          continue;
-        }
-      } catch (e) {
-        // Not JSON — it's a plain text response
+      // Try to extract a tool call JSON from the response
+      const toolCall = extractToolCallJSON(content);
+      if (toolCall) {
+        console.log('[VoiceCommander] Tool call:', toolCall.tool, JSON.stringify(toolCall.args));
+        const toolResult = await executeVCTool(toolCall.tool, toolCall.args || {});
+        console.log('[VoiceCommander] Tool result:', toolResult.output);
+        addTranscriptEntry('action', toolResult.output, toolCall.tool);
+        messages.push(
+          { role: 'assistant', content },
+          { role: 'user', content: `Tool result: ${JSON.stringify(toolResult)}. Continue or respond to the user.` }
+        );
+        continue;
       }
 
       assistantReply = content;
@@ -2640,6 +2691,7 @@ async function processAudioLocal(audioBase64) {
     }
 
     if (assistantReply) {
+      console.log('[VoiceCommander] Final reply:', assistantReply.substring(0, 200));
       addTranscriptEntry('assistant', assistantReply);
       voiceCommanderState.conversationHistory.push(
         { role: 'user', content: userText },
@@ -2650,10 +2702,60 @@ async function processAudioLocal(audioBase64) {
       }
     }
 
+  } catch (err) {
+    console.error('[VoiceCommander] Pipeline error:', err);
+    addTranscriptEntry('action', `Error: ${err.message}`, 'error');
   } finally {
     voiceCommanderState.processing = false;
     broadcastVCStatus();
   }
+}
+
+// Extract a {"tool": "...", "args": {...}} object from LLM output,
+// even if it's wrapped in markdown code blocks or surrounded by text.
+function extractToolCallJSON(text) {
+  // 1. Try direct parse
+  try {
+    const parsed = JSON.parse(text.trim());
+    if (parsed && parsed.tool) return parsed;
+  } catch (e) {}
+
+  // 2. Try extracting from markdown code blocks: ```json ... ``` or ``` ... ```
+  const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+  if (codeBlockMatch) {
+    try {
+      const parsed = JSON.parse(codeBlockMatch[1].trim());
+      if (parsed && parsed.tool) return parsed;
+    } catch (e) {}
+  }
+
+  // 3. Try finding a JSON object with "tool" key anywhere in the text
+  const jsonMatch = text.match(/\{[^{}]*"tool"\s*:\s*"[^"]+?"[^{}]*\}/);
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed && parsed.tool) return parsed;
+    } catch (e) {}
+  }
+
+  // 4. Try finding nested JSON (args might contain objects)
+  const braceStart = text.indexOf('{');
+  if (braceStart !== -1) {
+    let depth = 0;
+    let end = -1;
+    for (let i = braceStart; i < text.length; i++) {
+      if (text[i] === '{') depth++;
+      else if (text[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
+    }
+    if (end !== -1) {
+      try {
+        const parsed = JSON.parse(text.substring(braceStart, end + 1));
+        if (parsed && parsed.tool) return parsed;
+      } catch (e) {}
+    }
+  }
+
+  return null;
 }
 
 
@@ -2747,6 +2849,8 @@ function arrayBufferToBase64(buffer) {
   }
   return btoa(binary);
 }
+
+
 
 
 async function pushToHuggingFace(token, username, repoId, isNew, isPrivate) {

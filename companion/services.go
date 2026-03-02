@@ -190,8 +190,9 @@ func (sm *ServiceManager) StartLlamafile() error {
 		"--nobrowser",
 		"--port", fmt.Sprintf("%d", svc.Port),
 		"--host", "127.0.0.1",
-		"--ctx-size", "4096",
+		"--ctx-size", "2048",
 		"--threads", "4",
+		"-ngl", "9999",
 	)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

@@ -1016,6 +1016,22 @@ body {
   color: #888;
 }
 
+.vc-ptt-hint {
+  font-size: 11px;
+  color: #10b981;
+  margin-top: 2px;
+}
+
+.vc-ptt-hint kbd {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-family: inherit;
+  font-size: 10px;
+  color: #ddd;
+}
+
 .vc-transcript {
   background: #050505;
   border: 1px solid #1a1a1a;

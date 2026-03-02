@@ -103,6 +103,7 @@ const vcCheckCompanion = document.getElementById('vc-check-companion');
 const vcMicContainer = document.getElementById('vc-mic-container');
 const vcMicBtn = document.getElementById('vc-mic-btn');
 const vcMicLabel = document.getElementById('vc-mic-label');
+const vcPttHint = document.getElementById('vc-ptt-hint');
 const vcTranscript = document.getElementById('vc-transcript');
 
 let vcListening = false;
@@ -636,7 +637,8 @@ function setupEventListeners() {
       showToast('Mic error: ' + msg.error, 'error');
       vcListening = false;
       vcMicBtn.classList.remove('listening', 'processing');
-      vcMicLabel.textContent = 'Click to speak';
+      vcMicLabel.textContent = 'Click to enable mic';
+      vcPttHint.classList.add('hidden');
     }
   });
 
@@ -1102,14 +1104,17 @@ function updateVCStatusUI(data) {
   if (data.listening) {
     vcMicBtn.classList.add('listening');
     vcMicBtn.classList.remove('processing');
-    vcMicLabel.textContent = 'Listening... click to stop';
+    vcMicLabel.textContent = 'Mic active — click to stop';
+    vcPttHint.classList.remove('hidden');
   } else if (data.processing) {
     vcMicBtn.classList.remove('listening');
     vcMicBtn.classList.add('processing');
     vcMicLabel.textContent = 'Processing...';
+    vcPttHint.classList.add('hidden');
   } else {
     vcMicBtn.classList.remove('listening', 'processing');
-    vcMicLabel.textContent = 'Click to speak';
+    vcMicLabel.textContent = 'Click to enable mic';
+    vcPttHint.classList.add('hidden');
   }
 }
 
@@ -1183,7 +1188,8 @@ async function startVCListening() {
       await startVCRealtimeSession();
       vcListening = true;
       vcMicBtn.classList.add('listening');
-      vcMicLabel.textContent = 'Listening... click to stop';
+      vcMicLabel.textContent = 'Mic active — click to stop';
+      vcPttHint.classList.remove('hidden');
       chrome.runtime.sendMessage({ type: 'VC_START_LISTENING', tier });
     } else {
       // Content script injection handles mic capture (popups can't access getUserMedia)
@@ -1196,12 +1202,14 @@ async function startVCListening() {
       }
 
       vcListening = true;
-      vcMicLabel.textContent = 'Listening... click to stop';
+      vcMicLabel.textContent = 'Mic active — click to stop';
+      vcPttHint.classList.remove('hidden');
       chrome.runtime.sendMessage({ type: 'VC_START_LISTENING', tier });
     }
   } catch (err) {
     vcMicBtn.classList.remove('listening', 'processing');
-    vcMicLabel.textContent = 'Click to speak';
+    vcMicLabel.textContent = 'Click to enable mic';
+    vcPttHint.classList.add('hidden');
     showToast('Mic error: ' + err.message, 'error');
   }
 }
@@ -1217,7 +1225,8 @@ function stopVCListening() {
   }
 
   vcMicBtn.classList.remove('listening', 'processing');
-  vcMicLabel.textContent = 'Click to speak';
+  vcMicLabel.textContent = 'Click to enable mic';
+  vcPttHint.classList.add('hidden');
 
   chrome.runtime.sendMessage({ type: 'VC_STOP_LISTENING' });
 }
