@@ -1,0 +1,96 @@
+name: Build & Release Companion App
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags like v0.1.0, v1.0.0
+  workflow_dispatch:  # Allow manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: windows
+            goarch: amd64
+            ext: .exe
+            name: voice-commander-windows-amd64.exe
+          - goos: darwin
+            goarch: amd64
+            ext: ""
+            name: voice-commander-darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            ext: ""
+            name: voice-commander-darwin-arm64
+          - goos: linux
+            goarch: amd64
+            ext: ""
+            name: voice-commander-linux-amd64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build
+        working-directory: companion
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go build -ldflags="-s -w" -o ../dist/${{ matrix.name }} .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: dist/${{ matrix.name }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Make Unix binaries executable
+        run: |
+          chmod +x dist/voice-commander-darwin-amd64 || true
+          chmod +x dist/voice-commander-darwin-arm64 || true
+          chmod +x dist/voice-commander-linux-amd64 || true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/voice-commander-windows-amd64.exe
+            dist/voice-commander-darwin-amd64
+            dist/voice-commander-darwin-arm64
+            dist/voice-commander-linux-amd64
+          body: |
+            ## Voice Commander Companion App
+
+            Download the binary for your platform, then just double-click to run.
+            It will automatically download PinchTab and all required components on first launch.
+
+            | Platform | File |
+            |----------|------|
+            | Windows | `voice-commander-windows-amd64.exe` |
+            | macOS (Intel) | `voice-commander-darwin-amd64` |
+            | macOS (Apple Silicon) | `voice-commander-darwin-arm64` |
+            | Linux | `voice-commander-linux-amd64` |
+
+            ### First run
+            Just run the binary — it auto-downloads PinchTab (~12MB).
+            For the **Local** tier (free/offline), run with: `--tier local`

@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Browsing Capture</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div class="logo">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/>
+          <line x1="16" y1="17" x2="8" y2="17"/>
+          <polyline points="10 9 9 9 8 9"/>
+        </svg>
+      </div>
+      <h1>Browsing Capture</h1>
+    </div>
+
+    <!-- Activate Toggle -->
+    <div class="section toggle-section">
+      <div class="toggle-row">
+        <div>
+          <span class="label">Capture Mode</span>
+          <span class="sublabel" id="capture-status">Inactive</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="activate-toggle">
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Stats Bar -->
+    <div class="stats-bar" id="stats-bar">
+      <div class="stat">
+        <span class="stat-value" id="capture-count">0</span>
+        <span class="stat-label">Captured</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value" id="session-time">0m</span>
+        <span class="stat-label">Session</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value" id="total-words">0</span>
+        <span class="stat-label">Words</span>
+      </div>
+    </div>
+
+    <!-- AI Enhancement Status (subtle, non-distracting) -->
+    <div class="enhance-status hidden" id="enhance-status">
+      <div class="enhance-status-dot"></div>
+      <span class="enhance-status-text" id="enhance-status-text">Enhancing...</span>
+    </div>
+
+    <!-- API Configuration -->
+    <div class="section">
+      <div class="section-header" id="api-header">
+        <span>API Configuration</span>
+        <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </div>
+      <div class="section-body" id="api-body">
+        <div class="field">
+          <label for="provider-select">Provider</label>
+          <select id="provider-select">
+            <option value="openai">OpenAI</option>
+            <option value="anthropic">Anthropic</option>
+            <option value="ollama">Ollama (Local)</option>
+            <option value="custom">Custom Endpoint</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="api-token">API Token</label>
+          <div class="input-group">
+            <input type="password" id="api-token" placeholder="sk-...">
+            <button class="icon-btn" id="toggle-token-visibility" title="Show/hide token">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="field hidden" id="custom-endpoint-field">
+          <label for="custom-endpoint">Custom Endpoint URL</label>
+          <input type="url" id="custom-endpoint" placeholder="https://api.example.com/v1/chat/completions">
+        </div>
+        <div class="field" id="model-field">
+          <label for="model-select">Model</label>
+          <select id="model-select">
+            <!-- Populated dynamically by provider selection -->
+          </select>
+          <div class="field-help">Lightweight = faster &amp; cheaper · Powerful = best quality</div>
+        </div>
+        <button class="btn btn-secondary" id="save-api">Save API Settings</button>
+      </div>
+    </div>
+
+    <!-- AI Enhancement Toggle -->
+    <div class="section">
+      <div class="toggle-row">
+        <div>
+          <span class="label">AI-Enhanced Extraction</span>
+          <span class="sublabel">Use LLM to improve markdown quality</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="ai-toggle">
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Crawl Mode Section -->
+    <div class="section">
+      <div class="section-header" id="crawl-header">
+        <span>Crawl Mode</span>
+        <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </div>
+      <div class="section-body" id="crawl-body">
+        <div class="field-help" style="margin-bottom:8px;">
+          Start from any page and automatically crawl all same-domain subpages recursively. Great for capturing entire documentation sites, wikis, or blogs.
+        </div>
+        <div class="field">
+          <label for="crawl-url">Start URL</label>
+          <input type="url" id="crawl-url" placeholder="https://docs.example.com/guide">
+          <button class="btn btn-link" id="crawl-use-current" style="font-size:11px;padding:2px 0;margin-top:2px;">Use current tab URL</button>
+        </div>
+        <div class="crawl-options-row" style="display:flex;gap:8px;">
+          <div class="field" style="flex:1;">
+            <label for="crawl-max-pages">Max Pages</label>
+            <input type="number" id="crawl-max-pages" value="100" min="1" max="1000">
+          </div>
+          <div class="field" style="flex:1;">
+            <label for="crawl-max-depth">Max Depth</label>
+            <input type="number" id="crawl-max-depth" value="5" min="1" max="20">
+          </div>
+          <div class="field" style="flex:1;">
+            <label for="crawl-delay">Delay (ms)</label>
+            <input type="number" id="crawl-delay" value="2000" min="500" max="10000">
+          </div>
+        </div>
+        <button class="btn btn-primary btn-full" id="crawl-start">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/>
+            <path d="M2 12h20"/>
+          </svg>
+          Start Crawl
+        </button>
+        <div class="crawl-status hidden" id="crawl-status">
+          <div class="crawl-progress" style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;">
+            <div>
+              <span class="label" style="font-size:12px;">Crawling: </span>
+              <strong id="crawl-domain">—</strong>
+            </div>
+            <button class="btn btn-danger btn-sm" id="crawl-stop" style="padding:4px 10px;font-size:11px;">Stop</button>
+          </div>
+          <div style="font-size:12px;color:#aaa;">
+            <span id="crawl-pages-count">0</span> pages crawled · <span id="crawl-queue-count">0</span> in queue
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dataset Builder Section -->
+    <div class="section">
+      <div class="section-header collapsed" id="ds-header">
+        <span>Dataset Builder</span>
+        <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </div>
+      <div class="section-body hidden" id="ds-body">
+        <div class="field-help" style="margin-bottom:8px;">
+          Enter a prompt describing the dataset you want. The builder will search Brave, crawl results, score quality with LLM, and export gold/silver JSONL.
+        </div>
+
+        <!-- Prompt -->
+        <div class="field">
+          <label for="ds-prompt">Dataset Prompt</label>
+          <textarea id="ds-prompt" rows="3" placeholder="e.g. DevOps best practices for GitHub Actions CI/CD pipelines"></textarea>
+        </div>
+
+        <!-- Brave API Key nudge banner -->
+        <div class="ds-brave-banner" id="ds-brave-banner">
+          <strong>Tip:</strong> Add a <a href="#" id="ds-brave-banner-link" class="ds-brave-banner-action">Brave Search API key</a> for faster, more reliable results.
+          <a href="https://brave.com/search/api/" target="_blank" style="color:#BDD164;font-size:11px;">Get free key →</a>
+        </div>
+
+        <!-- Advanced Settings (collapsible) -->
+        <div class="ds-config-toggle" id="ds-config-toggle">
+          <span>Advanced Settings</span>
+          <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transform:rotate(-90deg);transition:transform 0.2s;">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </div>
+        <div class="ds-config hidden" id="ds-config">
+          <div class="crawl-options-row" style="display:flex;gap:8px;">
+            <div class="field" style="flex:1;">
+              <label for="ds-target-size">Target Size</label>
+              <input type="number" id="ds-target-size" value="100" min="10" max="10000">
+            </div>
+            <div class="field" style="flex:1;">
+              <label for="ds-gold-threshold">Gold ≥</label>
+              <input type="number" id="ds-gold-threshold" value="0.85" min="0" max="1" step="0.05">
+            </div>
+            <div class="field" style="flex:1;">
+              <label for="ds-silver-threshold">Silver ≥</label>
+              <input type="number" id="ds-silver-threshold" value="0.65" min="0" max="1" step="0.05">
+            </div>
+          </div>
+          <div class="crawl-options-row" style="display:flex;gap:8px;">
+            <div class="field" style="flex:1;">
+              <label for="ds-max-sources">Sources/Query</label>
+              <input type="number" id="ds-max-sources" value="10" min="1" max="50">
+            </div>
+            <div class="field" style="flex:1;">
+              <label for="ds-quality-tier">Quality Tier</label>
+              <select id="ds-quality-tier">
+                <option value="both">Gold + Silver</option>
+                <option value="gold">Gold only</option>
+                <option value="silver">Silver only</option>
+              </select>
+            </div>
+          </div>
+          <!-- Brave API Key -->
+          <div class="field">
+            <label for="ds-brave-key">Brave Search API Key</label>
+            <div class="input-group">
+              <input type="password" id="ds-brave-key" placeholder="BSA...">
+              <button class="icon-btn" id="ds-brave-key-toggle" title="Show/hide key">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+              </button>
+            </div>
+            <div class="field-help">Optional. Without it, browser-based search is used (slower).</div>
+          </div>
+          <button class="btn btn-secondary" id="ds-save-brave-key" style="align-self:flex-start;">Save Brave Key</button>
+        </div>
+
+        <!-- Start Button -->
+        <button class="btn btn-primary btn-full" id="ds-start">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+            <path d="M2 17l10 5 10-5"/>
+            <path d="M2 12l10 5 10-5"/>
+          </svg>
+          Start Building Dataset
+        </button>
+
+        <!-- Status display (hidden until active) -->
+        <div class="ds-status hidden" id="ds-status">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <span class="ds-phase" id="ds-phase">Initializing...</span>
+            <button class="btn btn-danger btn-sm" id="ds-stop" style="padding:4px 10px;font-size:11px;width:auto;">Stop</button>
+          </div>
+          <div class="export-progress-bar-track" style="margin-bottom:8px;">
+            <div class="export-progress-bar-fill" id="ds-progress-bar" style="width:0%"></div>
+          </div>
+          <div class="ds-stats-grid">
+            <div class="ds-stat-item">
+              <span class="ds-stat-value" id="ds-stat-queries">0</span>
+              <span class="ds-stat-label">Queries</span>
+            </div>
+            <div class="ds-stat-item">
+              <span class="ds-stat-value" id="ds-stat-urls">0</span>
+              <span class="ds-stat-label">URLs</span>
+            </div>
+            <div class="ds-stat-item">
+              <span class="ds-stat-value" id="ds-stat-crawled">0</span>
+              <span class="ds-stat-label">Crawled</span>
+            </div>
+            <div class="ds-stat-item">
+              <span class="ds-stat-value" id="ds-stat-scored">0</span>
+              <span class="ds-stat-label">Scored</span>
+            </div>
+            <div class="ds-stat-item">
+              <span class="ds-stat-value" id="ds-stat-gold">0</span>
+              <span class="ds-stat-label">Gold</span>
+            </div>
+            <div class="ds-stat-item">
+              <span class="ds-stat-value" id="ds-stat-silver">0</span>
+              <span class="ds-stat-label">Silver</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Voice Commander Section -->
+    <div class="section">
+      <div class="section-header collapsed" id="vc-header">
+        <span>Voice Commander</span>
+        <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </div>
+      <div class="section-body hidden" id="vc-body">
+        <div class="field-help" style="margin-bottom:8px;">
+          Speak commands to control the browser in real-time. Requires the companion app for browser automation.
+        </div>
+
+        <!-- Tier selector -->
+        <div class="field">
+          <label for="vc-tier">Provider</label>
+          <select id="vc-tier">
+            <option value="local">Local (Free, Offline)</option>
+            <option value="groq" selected>Groq (Budget Cloud)</option>
+            <option value="openai_realtime">OpenAI Realtime (Premium)</option>
+          </select>
+        </div>
+
+        <!-- Groq API key (shown when Groq selected) -->
+        <div class="field" id="vc-groq-field">
+          <label for="vc-groq-key">Groq API Key</label>
+          <div class="input-group">
+            <input type="password" id="vc-groq-key" placeholder="gsk_...">
+            <button class="icon-btn" id="vc-groq-key-toggle" title="Show/hide key">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            </button>
+          </div>
+          <div class="field-help">Free tier at <a href="https://console.groq.com" target="_blank">console.groq.com</a></div>
+        </div>
+
+        <!-- OpenAI Realtime notice (shown when OpenAI selected) -->
+        <div class="field hidden" id="vc-openai-notice">
+          <div class="field-help" style="color:#FF9153;">Uses your OpenAI API key from API Configuration above. ~$0.06/min input + $0.24/min output.</div>
+        </div>
+
+        <!-- Save settings button -->
+        <button class="btn btn-secondary" id="vc-save-settings">Save Voice Settings</button>
+
+        <!-- Service status indicators -->
+        <div class="vc-status-bar" id="vc-status-bar">
+          <span class="vc-indicator" id="vc-ind-pinchtab">
+            <span class="vc-dot"></span>PinchTab
+          </span>
+          <span class="vc-indicator" id="vc-ind-stt">
+            <span class="vc-dot"></span>STT
+          </span>
+          <span class="vc-indicator" id="vc-ind-llm">
+            <span class="vc-dot"></span>LLM
+          </span>
+        </div>
+
+        <!-- Companion app setup banner (shown when companion not detected) -->
+        <div class="vc-download-banner hidden" id="vc-download-banner">
+          <strong>Companion app required</strong>
+          <p>Download and run the Voice Commander companion app to enable voice-controlled browser automation.</p>
+          <div class="vc-setup-steps">
+            <div class="vc-setup-step">
+              <span class="vc-step-num">1</span>
+              <span>Download for your platform:</span>
+            </div>
+            <div class="vc-platform-btns" id="vc-platform-btns">
+              <a href="#" class="btn btn-primary btn-full vc-dl-btn" id="vc-dl-recommended" target="_blank">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span id="vc-dl-recommended-label">Download</span>
+              </a>
+              <details class="vc-other-platforms">
+                <summary>Other platforms</summary>
+                <div class="vc-platform-list" id="vc-platform-list">
+                  <a href="#" class="vc-platform-link" data-platform="windows">Windows (x64)</a>
+                  <a href="#" class="vc-platform-link" data-platform="mac-intel">macOS (Intel)</a>
+                  <a href="#" class="vc-platform-link" data-platform="mac-arm">macOS (Apple Silicon)</a>
+                  <a href="#" class="vc-platform-link" data-platform="linux">Linux (x64)</a>
+                </div>
+              </details>
+            </div>
+            <div class="vc-setup-step">
+              <span class="vc-step-num">2</span>
+              <span>Run the downloaded file — it auto-installs everything.</span>
+            </div>
+            <div class="vc-setup-step">
+              <span class="vc-step-num">3</span>
+              <span>Come back here and click the mic button!</span>
+            </div>
+          </div>
+          <button class="btn btn-secondary btn-full" id="vc-check-companion" style="margin-top:8px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            Check Connection
+          </button>
+        </div>
+
+        <!-- Mic button (shown when services ready) -->
+        <div class="vc-mic-container hidden" id="vc-mic-container">
+          <button class="vc-mic-btn" id="vc-mic-btn" title="Click to start listening">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="23"/>
+              <line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+          </button>
+          <span class="vc-mic-label" id="vc-mic-label">Click to speak</span>
+        </div>
+
+        <!-- Transcript log -->
+        <div class="vc-transcript hidden" id="vc-transcript">
+          <!-- Scrolling log of user speech + AI actions -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Export Section -->
+    <div class="section export-section">
+      <div class="field">
+        <label for="export-folder-name">Export Folder Name</label>
+        <input type="text" id="export-folder-name" placeholder="BrowsingCapture" value="BrowsingCapture">
+        <div class="field-help">Each domain gets its own folder with notes/ and training-data/ subfolders</div>
+      </div>
+      <!-- Export progress overlay (shown during export) -->
+      <div class="export-progress hidden" id="export-progress">
+        <div class="export-progress-inner">
+          <div class="export-progress-spinner"></div>
+          <div class="export-progress-text" id="export-progress-phase">Preparing export...</div>
+          <div class="export-progress-detail" id="export-progress-detail"></div>
+          <div class="export-progress-bar-track">
+            <div class="export-progress-bar-fill" id="export-progress-bar" style="width:0%"></div>
+          </div>
+          <div class="export-progress-hint">You can close this popup — export continues in the background</div>
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-full" id="export-zip">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Export as ZIP
+      </button>
+      <button class="btn btn-secondary btn-full" id="export-folder" style="margin-top:6px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+        </svg>
+        Export to Folder
+      </button>
+      <div class="export-options" style="flex-direction:column;gap:8px;align-items:stretch;">
+        <label class="checkbox-label">
+          <input type="checkbox" id="ai-questions">
+          <span>Generate AI questions (slower)</span>
+        </label>
+        <div class="field" style="margin-top:4px;">
+          <label for="sanitize-select">Data Sanitization</label>
+          <select id="sanitize-select">
+            <option value="off">Off — export raw data</option>
+            <option value="regex">Fast — regex PII redaction (emails, keys, phones, SSN)</option>
+            <option value="llm">Deep — regex + LLM (also company names, internal data)</option>
+          </select>
+          <div class="field-help">Removes sensitive data (emails, API keys, company names, etc.) before export</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HuggingFace Section -->
+    <div class="section">
+      <div class="section-header" id="hf-header">
+        <span>HuggingFace</span>
+        <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </div>
+      <div class="section-body hidden" id="hf-body">
+        <!-- HF Token -->
+        <div class="field">
+          <label for="hf-token">HuggingFace Token</label>
+          <div class="input-group">
+            <input type="password" id="hf-token" placeholder="hf_...">
+            <button class="icon-btn" id="toggle-hf-token" title="Show/hide token">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            </button>
+          </div>
+          <div class="hf-token-status hidden" id="hf-token-status"></div>
+        </div>
+        <button class="btn btn-secondary" id="hf-save-token">Validate &amp; Save Token</button>
+
+        <!-- Dataset Mode -->
+        <div class="field" id="hf-dataset-section" style="display:none;">
+          <label>Dataset</label>
+          <div class="hf-mode-row">
+            <label class="hf-radio-label">
+              <input type="radio" name="hf-mode" value="new" id="hf-mode-new" checked>
+              <span>Create new</span>
+            </label>
+            <label class="hf-radio-label">
+              <input type="radio" name="hf-mode" value="existing" id="hf-mode-existing">
+              <span>Use existing</span>
+            </label>
+          </div>
+          <!-- New dataset name -->
+          <div id="hf-new-fields">
+            <input type="text" id="hf-new-name" placeholder="my-browsing-dataset">
+            <div class="field-help">Repo will be created as your-username/name</div>
+          </div>
+          <!-- Existing dataset dropdown -->
+          <div id="hf-existing-fields" class="hidden">
+            <select id="hf-existing-select">
+              <option value="">Loading datasets...</option>
+            </select>
+          </div>
+          <label class="checkbox-label" style="margin-top:6px;">
+            <input type="checkbox" id="hf-private" checked>
+            <span>Private dataset</span>
+          </label>
+        </div>
+
+        <!-- Push Button -->
+        <button class="btn btn-primary btn-full" id="hf-push" style="display:none;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          Push to HuggingFace
+        </button>
+
+        <!-- HF Upload Progress -->
+        <div class="hf-progress hidden" id="hf-progress">
+          <div class="hf-progress-inner">
+            <div class="export-progress-spinner"></div>
+            <div class="hf-progress-text" id="hf-progress-text">Preparing upload...</div>
+            <div class="hf-progress-detail" id="hf-progress-detail"></div>
+            <div class="export-progress-bar-track">
+              <div class="export-progress-bar-fill" id="hf-progress-bar" style="width:0%"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Post-upload links -->
+        <div class="hf-links hidden" id="hf-links">
+          <a href="#" id="hf-link-dataset" target="_blank" class="hf-link">View Dataset on HuggingFace</a>
+          <a href="#" id="hf-link-autotrain" target="_blank" class="hf-link">Fine-tune with AutoTrain</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Section (combined from options page) -->
+    <div class="section">
+      <div class="section-header" id="settings-header">
+        <span>Settings</span>
+        <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </div>
+      <div class="section-body hidden" id="settings-body">
+        <div class="field">
+          <label>Excluded URL Patterns</label>
+          <textarea id="excluded-urls" rows="3" placeholder="/login&#10;/banking&#10;mail.google.com"></textarea>
+          <div class="field-help">One per line. These pages will never be captured.</div>
+        </div>
+        <div class="field">
+          <label>Min Word Count</label>
+          <input type="number" id="min-words" value="50" min="0" max="1000">
+          <div class="field-help">Skip pages with fewer words than this.</div>
+        </div>
+        <div class="toggle-row compact">
+          <span class="label">SPA Detection</span>
+          <label class="switch">
+            <input type="checkbox" id="spa-detection" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="toggle-row compact">
+          <span class="label">Capture Images (alt text)</span>
+          <label class="switch">
+            <input type="checkbox" id="capture-images" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="toggle-row compact">
+          <span class="label">Capture Links</span>
+          <label class="switch">
+            <input type="checkbox" id="capture-links" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="field">
+          <label>AI Max Tokens Per Page</label>
+          <input type="number" id="max-tokens" value="8000" min="1000" max="100000">
+        </div>
+        <div class="field">
+          <label>AI Call Delay (ms)</label>
+          <input type="number" id="ai-delay" value="2000" min="500" max="30000">
+        </div>
+        <button class="btn btn-secondary" id="save-settings">Save Settings</button>
+        <button class="btn btn-danger" id="clear-data">Clear All Captured Data</button>
+      </div>
+    </div>
+
+    <!-- Recent Captures -->
+    <div class="section">
+      <div class="section-header" id="recent-header">
+        <span>Recent Captures</span>
+        <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </div>
+      <div class="section-body" id="recent-body">
+        <div class="recent-list" id="recent-list">
+          <div class="empty-state">No captures yet. Activate and start browsing!</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <span class="version">v1.0.0</span>
+    </div>
+  </div>
+
+  <div class="toast hidden" id="toast"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

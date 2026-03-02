@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Browsing Capture — Settings</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #010101;
+      color: #e1e1e6;
+      padding: 40px;
+      max-width: 700px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 24px;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: #666;
+      margin-bottom: 32px;
+    }
+
+    .section {
+      background: #0a0a0a;
+      border: 1px solid #1a1a1a;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    .section h2 {
+      font-size: 16px;
+      margin-bottom: 16px;
+      color: #BDD164;
+    }
+
+    .field {
+      margin-bottom: 16px;
+    }
+
+    .field label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+
+    .field input, .field textarea {
+      width: 100%;
+      background: #050505;
+      border: 1px solid #1a1a1a;
+      border-radius: 6px;
+      padding: 10px 12px;
+      color: #e1e1e6;
+      font-size: 14px;
+      outline: none;
+      font-family: inherit;
+    }
+
+    .field input:focus, .field textarea:focus {
+      border-color: #BDD164;
+    }
+
+    .field textarea {
+      min-height: 100px;
+      resize: vertical;
+    }
+
+    .field .help {
+      font-size: 11px;
+      color: #666;
+      margin-top: 4px;
+    }
+
+    .toggle-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .toggle-label {
+      font-size: 14px;
+    }
+
+    .toggle-desc {
+      font-size: 12px;
+      color: #666;
+    }
+
+    .switch {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      flex-shrink: 0;
+    }
+
+    .switch input { opacity: 0; width: 0; height: 0; }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: #2a2a2a;
+      border-radius: 24px;
+      transition: 0.3s;
+    }
+
+    .slider::before {
+      content: "";
+      position: absolute;
+      height: 18px; width: 18px;
+      left: 3px; bottom: 3px;
+      background: #e1e1e6;
+      border-radius: 50%;
+      transition: 0.3s;
+    }
+
+    .switch input:checked + .slider { background: #BDD164; }
+    .switch input:checked + .slider::before { transform: translateX(20px); background: #010101; }
+
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .btn-primary {
+      background: #BDD164;
+      color: #010101;
+    }
+
+    .btn-primary:hover { background: #afc255; }
+
+    .btn-danger {
+      background: #1a0a0a;
+      color: #FF9153;
+      border: 1px solid #3a1a0a;
+    }
+
+    .btn-danger:hover { background: #3a1a0a; }
+
+    .btn-row {
+      display: flex;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #1a1a1a;
+      color: #e1e1e6;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      display: none;
+    }
+
+    .toast.success { border-left: 3px solid #BDD164; }
+    .toast.error { border-left: 3px solid #FF9153; }
+    .toast.show { display: block; }
+  </style>
+</head>
+<body>
+  <h1>Browsing Capture Settings</h1>
+  <p class="subtitle">Configure URL filters, output directory, and advanced options.</p>
+
+  <!-- URL Filters -->
+  <div class="section">
+    <h2>URL Exclusions</h2>
+    <p class="toggle-desc" style="margin-bottom:12px;">Pages matching these patterns will never be captured. One pattern per line (regex supported).</p>
+    <div class="field">
+      <label>Excluded URL Patterns</label>
+      <textarea id="excluded-urls" placeholder="/login&#10;/signin&#10;/checkout&#10;/banking&#10;mail.google.com&#10;*.pdf"></textarea>
+      <div class="help">Default sensitive patterns (login, banking, etc.) are always excluded.</div>
+    </div>
+  </div>
+
+  <!-- Content Settings -->
+  <div class="section">
+    <h2>Content Settings</h2>
+    <div class="field">
+      <label>Minimum Word Count</label>
+      <input type="number" id="min-words" value="50" min="0" max="1000">
+      <div class="help">Skip pages with fewer words than this.</div>
+    </div>
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Capture Images (alt text)</div>
+        <div class="toggle-desc">Include image alt text and captions in markdown</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="capture-images" checked>
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Capture Links</div>
+        <div class="toggle-desc">Include referenced links at end of each note</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="capture-links" checked>
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">SPA Detection</div>
+        <div class="toggle-desc">Re-capture when single-page apps navigate</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="spa-detection" checked>
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <!-- AI Settings -->
+  <div class="section">
+    <h2>AI Settings</h2>
+    <div class="field">
+      <label>Max tokens per page (AI enhancement)</label>
+      <input type="number" id="max-tokens" value="8000" min="1000" max="100000">
+      <div class="help">Pages exceeding this token count will skip AI enhancement to save costs.</div>
+    </div>
+    <div class="field">
+      <label>Delay between AI calls (ms)</label>
+      <input type="number" id="ai-delay" value="2000" min="500" max="30000">
+      <div class="help">Rate limiting delay between consecutive API calls.</div>
+    </div>
+  </div>
+
+  <!-- Data Management -->
+  <div class="section">
+    <h2>Data Management</h2>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="export-all">Export All Captures</button>
+      <button class="btn btn-danger" id="clear-data">Clear All Data</button>
+    </div>
+  </div>
+
+  <div class="btn-row" style="margin-top: 24px;">
+    <button class="btn btn-primary" id="save-settings">Save Settings</button>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // Load settings
+    chrome.storage.local.get([
+      'excludedUrls', 'minWords', 'captureImages', 'captureLinks',
+      'spaDetection', 'maxTokens', 'aiDelay'
+    ], (state) => {
+      document.getElementById('excluded-urls').value = (state.excludedUrls || []).join('\n');
+      document.getElementById('min-words').value = state.minWords ?? 50;
+      document.getElementById('capture-images').checked = state.captureImages ?? true;
+      document.getElementById('capture-links').checked = state.captureLinks ?? true;
+      document.getElementById('spa-detection').checked = state.spaDetection ?? true;
+      document.getElementById('max-tokens').value = state.maxTokens ?? 8000;
+      document.getElementById('ai-delay').value = state.aiDelay ?? 2000;
+    });
+
+    // Save settings
+    document.getElementById('save-settings').addEventListener('click', () => {
+      const excludedUrls = document.getElementById('excluded-urls').value
+        .split('\n').map(l => l.trim()).filter(Boolean);
+
+      chrome.storage.local.set({
+        excludedUrls,
+        minWords: parseInt(document.getElementById('min-words').value) || 50,
+        captureImages: document.getElementById('capture-images').checked,
+        captureLinks: document.getElementById('capture-links').checked,
+        spaDetection: document.getElementById('spa-detection').checked,
+        maxTokens: parseInt(document.getElementById('max-tokens').value) || 8000,
+        aiDelay: parseInt(document.getElementById('ai-delay').value) || 2000,
+      }, () => {
+        showToast('Settings saved!', 'success');
+      });
+    });
+
+    // Clear data
+    document.getElementById('clear-data').addEventListener('click', () => {
+      if (confirm('Are you sure you want to clear all captured data? This cannot be undone.')) {
+        chrome.storage.local.set({
+          captureCount: 0,
+          totalWords: 0,
+          recentCaptures: [],
+        });
+        indexedDB.deleteDatabase('BrowsingCaptureDB');
+        showToast('All data cleared.', 'success');
+      }
+    });
+
+    // Export
+    document.getElementById('export-all').addEventListener('click', () => {
+      chrome.runtime.sendMessage({ type: 'EXPORT_JSONL', generateQuestions: false }, (res) => {
+        if (res && res.success) {
+          showToast(`Exported ${res.count} entries!`, 'success');
+        } else {
+          showToast(res?.error || 'Export failed', 'error');
+        }
+      });
+    });
+
+    function showToast(msg, type) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = `toast ${type} show`;
+      setTimeout(() => t.classList.remove('show'), 3000);
+    }
+  </script>
+</body>
+</html>

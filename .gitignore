@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Build output
+companion/dist/
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Secrets / local config
+.env
+*.key
+
+# Go
+companion/voice-commander
+companion/voice-commander.exe
