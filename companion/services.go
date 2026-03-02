@@ -99,9 +99,12 @@ func (sm *ServiceManager) StartPinchTab() error {
 		return fmt.Errorf("PinchTab binary not found at %s", svc.BinaryPath)
 	}
 
-	cmd := exec.Command(svc.BinaryPath,
-		"--port", fmt.Sprintf("%d", svc.Port),
-		"--token", sm.config.BridgeToken,
+	cmd := exec.Command(svc.BinaryPath)
+	cmd.Env = append(os.Environ(),
+		fmt.Sprintf("BRIDGE_PORT=%d", svc.Port),
+		fmt.Sprintf("BRIDGE_TOKEN=%s", sm.config.BridgeToken),
+		"BRIDGE_HEADLESS=true",
+		"BRIDGE_BIND=127.0.0.1",
 	)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

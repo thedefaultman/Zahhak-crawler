@@ -13,10 +13,11 @@ import (
 // DownloadURLs maps platform-specific download URLs for each service
 var DownloadURLs = map[string]map[string]string{
 	"pinchtab": {
-		"darwin/amd64":  "https://github.com/nichochar/pinchtab/releases/latest/download/pinchtab-darwin-amd64",
-		"darwin/arm64":  "https://github.com/nichochar/pinchtab/releases/latest/download/pinchtab-darwin-arm64",
-		"linux/amd64":   "https://github.com/nichochar/pinchtab/releases/latest/download/pinchtab-linux-amd64",
-		"windows/amd64": "https://github.com/nichochar/pinchtab/releases/latest/download/pinchtab-windows-amd64.exe",
+		"darwin/amd64":  "https://github.com/pinchtab/pinchtab/releases/latest/download/pinchtab-darwin-amd64",
+		"darwin/arm64":  "https://github.com/pinchtab/pinchtab/releases/latest/download/pinchtab-darwin-arm64",
+		"linux/amd64":   "https://github.com/pinchtab/pinchtab/releases/latest/download/pinchtab-linux-amd64",
+		"linux/arm64":   "https://github.com/pinchtab/pinchtab/releases/latest/download/pinchtab-linux-arm64",
+		"windows/amd64": "https://github.com/pinchtab/pinchtab/releases/latest/download/pinchtab-windows-amd64.exe",
 	},
 	"whisper-server": {
 		// whisper.cpp server binaries — user may need to compile or use pre-built
