@@ -315,9 +315,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       (async () => {
         try {
           // Load saved settings
-          const vcSettings = await chrome.storage.local.get(['vcTier', 'vcGroqKey', 'vcBridgeToken']);
-          voiceCommanderState.tier = vcSettings.vcTier || 'groq';
-          voiceCommanderState.groqApiKey = vcSettings.vcGroqKey || '';
+          const vcSettings = await chrome.storage.local.get(['vcTier', 'vcBridgeToken']);
+          voiceCommanderState.tier = vcSettings.vcTier || 'local';
           if (vcSettings.vcBridgeToken) {
             voiceCommanderState.bridgeToken = vcSettings.vcBridgeToken;
           }
@@ -420,11 +419,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       // Route audio to appropriate tier pipeline
       (async () => {
         try {
-          if (voiceCommanderState.tier === 'groq') {
-            await processAudioGroq(msg.audio);
-          } else if (voiceCommanderState.tier === 'local') {
-            await processAudioLocal(msg.audio);
-          }
+          await processAudioLocal(msg.audio);
           sendResponse({ success: true });
         } catch (err) {
           console.error('[VoiceCommander] Audio processing error:', err);
@@ -465,29 +460,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           voiceCommanderState.tier = msg.tier;
           toSave.vcTier = msg.tier;
         }
-        if (msg.groqKey !== undefined) {
-          voiceCommanderState.groqApiKey = msg.groqKey;
-          toSave.vcGroqKey = msg.groqKey;
-        }
         await chrome.storage.local.set(toSave);
-
-        // If switching to local tier, trigger local model install on companion
-        if (msg.tier === 'local') {
-          try {
-            const installResp = await fetch(
-              `http://localhost:${voiceCommanderState.companionHealthPort}/install-local`,
-              { method: 'POST' }
-            );
-            const installResult = await installResp.json();
-            console.log('[VoiceCommander] Local install triggered:', installResult);
-            sendResponse({ success: true, localInstall: installResult });
-          } catch (e) {
-            console.warn('[VoiceCommander] Could not trigger local install:', e.message);
-            sendResponse({ success: true, localInstallError: e.message });
-          }
-        } else {
-          sendResponse({ success: true });
-        }
+        sendResponse({ success: true });
       })();
       return true;
 
@@ -2314,14 +2288,13 @@ async function uploadFilesToDataset(token, repoId, files) {
 
 let voiceCommanderState = {
   active: false,
-  tier: 'groq',              // 'local' | 'groq' | 'openai_realtime'
+  tier: 'local',             // 'local' | 'openai_realtime'
   listening: false,
   processing: false,
   pinchtabConnected: false,
   bridgeToken: '',
   pinchtabPort: 9867,
   companionHealthPort: 9868,
-  groqApiKey: '',
   openaiRealtimeModel: 'gpt-4o-realtime-preview-2024-12-17',
   transcript: [],             // {role, text, timestamp, action?}[]
   conversationHistory: [],    // {role, content}[] for multi-turn context
@@ -2571,176 +2544,6 @@ IMPORTANT RULES:
 ${pageContext ? `CURRENT PAGE CONTEXT:\n${pageContext}\n` : ''}
 
 You have these browser control tools available. Use them to fulfill the user's requests.`;
-}
-
-
-async function processAudioGroq(audioBase64) {
-  const groqKey = voiceCommanderState.groqApiKey;
-  if (!groqKey) throw new Error('Groq API key not set');
-
-  voiceCommanderState.processing = true;
-  broadcastVCStatus();
-
-  try {
-    // Step 1: Speech-to-Text via Groq Whisper
-    const audioBlob = base64ToBlob(audioBase64, 'audio/webm');
-    const formData = new FormData();
-    formData.append('file', audioBlob, 'audio.webm');
-    formData.append('model', 'whisper-large-v3-turbo');
-    formData.append('response_format', 'json');
-
-    const sttResp = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${groqKey}` },
-      body: formData,
-    });
-
-    if (!sttResp.ok) {
-      const errText = await sttResp.text().catch(() => '');
-      throw new Error(`Groq STT failed: ${sttResp.status} ${errText}`);
-    }
-
-    const sttResult = await sttResp.json();
-    const userText = sttResult.text?.trim();
-
-    if (!userText) {
-      voiceCommanderState.processing = false;
-      broadcastVCStatus();
-      return;
-    }
-
-    // Add to transcript
-    addTranscriptEntry('user', userText);
-
-    // Step 2: Get page context for the LLM
-    let pageContext = '';
-    try {
-      const snapshot = await ptSnapshot();
-      pageContext = typeof snapshot === 'string'
-        ? snapshot.substring(0, 2000)
-        : JSON.stringify(snapshot).substring(0, 2000);
-    } catch (e) {
-      // PinchTab might not be ready yet
-    }
-
-    // Step 3: LLM with tool calling via Groq
-    const systemPrompt = getVCSystemPrompt(pageContext);
-
-    // Build conversation messages with history
-    const messages = [
-      { role: 'system', content: systemPrompt },
-      ...voiceCommanderState.conversationHistory.slice(-voiceCommanderState.maxHistoryTurns * 2),
-      { role: 'user', content: userText },
-    ];
-
-    let assistantReply = '';
-    let maxToolRounds = 5;
-
-    for (let round = 0; round < maxToolRounds; round++) {
-      const chatResp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${groqKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
-          messages,
-          tools: VC_TOOLS,
-          tool_choice: 'auto',
-          max_tokens: 1024,
-        }),
-      });
-
-      if (!chatResp.ok) {
-        const errText = await chatResp.text().catch(() => '');
-        throw new Error(`Groq LLM failed: ${chatResp.status} ${errText}`);
-      }
-
-      const chatResult = await chatResp.json();
-      const choice = chatResult.choices?.[0];
-      const msg = choice?.message;
-
-      if (!msg) break;
-
-      // Add assistant message to messages array for multi-turn
-      messages.push(msg);
-
-      // Check for tool calls
-      if (msg.tool_calls && msg.tool_calls.length > 0) {
-        for (const toolCall of msg.tool_calls) {
-          const toolName = toolCall.function?.name;
-          let toolArgs = {};
-          try {
-            toolArgs = JSON.parse(toolCall.function?.arguments || '{}');
-          } catch (e) {}
-
-          // Execute tool
-          const toolResult = await executeVCTool(toolName, toolArgs);
-
-          // Add action to transcript
-          addTranscriptEntry('action', toolResult.output, toolName);
-
-          // Add tool result to messages
-          messages.push({
-            role: 'tool',
-            tool_call_id: toolCall.id,
-            content: JSON.stringify(toolResult),
-          });
-        }
-        // Continue loop to let model process tool results
-        continue;
-      }
-
-      // No tool calls — get the text response
-      assistantReply = msg.content || '';
-      break;
-    }
-
-    if (assistantReply) {
-      addTranscriptEntry('assistant', assistantReply);
-
-      // Update conversation history
-      voiceCommanderState.conversationHistory.push(
-        { role: 'user', content: userText },
-        { role: 'assistant', content: assistantReply }
-      );
-      // Trim history
-      if (voiceCommanderState.conversationHistory.length > voiceCommanderState.maxHistoryTurns * 2) {
-        voiceCommanderState.conversationHistory = voiceCommanderState.conversationHistory.slice(-voiceCommanderState.maxHistoryTurns * 2);
-      }
-
-      // Step 4: Text-to-Speech via Groq
-      try {
-        const ttsResp = await fetch('https://api.groq.com/openai/v1/audio/speech', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${groqKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'playai-tts',
-            input: assistantReply,
-            voice: 'Arista-PlayAI',
-            response_format: 'wav',
-          }),
-        });
-
-        if (ttsResp.ok) {
-          const audioArrayBuffer = await ttsResp.arrayBuffer();
-          const audioBase64Out = arrayBufferToBase64(audioArrayBuffer);
-          broadcastVCMessage('VC_AUDIO_RESPONSE', { audio: audioBase64Out, mimeType: 'audio/wav' });
-        }
-      } catch (ttsErr) {
-        console.warn('[VoiceCommander] TTS failed:', ttsErr.message);
-        // Non-fatal — user still sees text
-      }
-    }
-
-  } finally {
-    voiceCommanderState.processing = false;
-    broadcastVCStatus();
-  }
 }
 
 

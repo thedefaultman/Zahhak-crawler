@@ -36,7 +36,6 @@ func main() {
 	whisperPort := flag.Int("whisper-port", 8081, "Whisperfile server port")
 	llamaPort := flag.Int("llama-port", 8080, "Llamafile server port")
 	dataDir := flag.String("data-dir", "", "Directory for downloaded binaries and models")
-	tier := flag.String("tier", "cloud", "Tier to set up: 'cloud' (PinchTab only) or 'local' (PinchTab + Whisper + Llamafile)")
 	skipInstall := flag.Bool("skip-install", false, "Skip automatic download of missing binaries")
 	flag.Parse()
 
@@ -74,7 +73,7 @@ func main() {
 	services = NewServiceManager(config)
 
 	if !*skipInstall {
-		if err := autoInstall(*tier, config.DataDir); err != nil {
+		if err := autoInstall(config.DataDir); err != nil {
 			log.Fatalf("Auto-install failed: %v", err)
 		}
 		services.RefreshInstallStatus()
@@ -85,13 +84,11 @@ func main() {
 		log.Println("Try re-running the companion app or check your network connection.")
 	}
 
-	if *tier == "local" {
-		if err := services.StartWhisper(); err != nil {
-			log.Printf("Warning: Could not start Whisper: %v", err)
-		}
-		if err := services.StartLlamafile(); err != nil {
-			log.Printf("Warning: Could not start Llamafile: %v", err)
-		}
+	if err := services.StartWhisper(); err != nil {
+		log.Printf("Warning: Could not start Whisper: %v", err)
+	}
+	if err := services.StartLlamafile(); err != nil {
+		log.Printf("Warning: Could not start Llamafile: %v", err)
 	}
 
 	go startHealthServer()
@@ -170,7 +167,7 @@ func handleConfig(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(config)
 }
 
-// handleInstallLocal lets the extension trigger local tier installation via HTTP
+// handleInstallLocal lets the extension trigger installation of missing binaries via HTTP
 func handleInstallLocal(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
@@ -180,8 +177,8 @@ func handleInstallLocal(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	go func() {
-		if err := autoInstall("local", config.DataDir); err != nil {
-			log.Printf("Local tier install failed: %v", err)
+		if err := autoInstall(config.DataDir); err != nil {
+			log.Printf("Install failed: %v", err)
 			return
 		}
 		services.RefreshInstallStatus()
@@ -196,12 +193,12 @@ func handleInstallLocal(w http.ResponseWriter, r *http.Request) {
 
 	json.NewEncoder(w).Encode(map[string]string{
 		"status":  "installing",
-		"message": "Local tier components are being downloaded. Check /health for progress.",
+		"message": "Components are being downloaded. Check /health for progress.",
 	})
 }
 
-// autoInstall downloads any missing binaries and models for the selected tier
-func autoInstall(tier string, dataDir string) error {
+// autoInstall downloads any missing binaries (PinchTab, Whisperfile, Llamafile)
+func autoInstall(dataDir string) error {
 	binDir := filepath.Join(dataDir, "bin")
 	ext := ""
 	if runtime.GOOS == "windows" {
@@ -217,24 +214,22 @@ func autoInstall(tier string, dataDir string) error {
 		fmt.Println("PinchTab installed successfully!")
 	}
 
-	if tier == "local" {
-		whisperPath := filepath.Join(binDir, "whisperfile"+ext)
-		if _, err := os.Stat(whisperPath); os.IsNotExist(err) {
-			fmt.Println("Whisperfile not found — downloading (~87MB)...")
-			if err := InstallWhisperfile(dataDir); err != nil {
-				return fmt.Errorf("failed to install Whisperfile: %w", err)
-			}
-			fmt.Println("Whisperfile installed successfully!")
+	whisperPath := filepath.Join(binDir, "whisperfile"+ext)
+	if _, err := os.Stat(whisperPath); os.IsNotExist(err) {
+		fmt.Println("Whisperfile not found — downloading (~87MB)...")
+		if err := InstallWhisperfile(dataDir); err != nil {
+			return fmt.Errorf("failed to install Whisperfile: %w", err)
 		}
+		fmt.Println("Whisperfile installed successfully!")
+	}
 
-		llamaPath := filepath.Join(binDir, "llamafile"+ext)
-		if _, err := os.Stat(llamaPath); os.IsNotExist(err) {
-			fmt.Println("Llamafile not found — downloading (~2.4GB, this may take a while)...")
-			if err := InstallLlamafile(dataDir); err != nil {
-				return fmt.Errorf("failed to install Llamafile: %w", err)
-			}
-			fmt.Println("Llamafile installed successfully!")
+	llamaPath := filepath.Join(binDir, "llamafile"+ext)
+	if _, err := os.Stat(llamaPath); os.IsNotExist(err) {
+		fmt.Println("Llamafile not found — downloading (~2.4GB, this may take a while)...")
+		if err := InstallLlamafile(dataDir); err != nil {
+			return fmt.Errorf("failed to install Llamafile: %w", err)
 		}
+		fmt.Println("Llamafile installed successfully!")
 	}
 
 	fmt.Println("All required components are ready!")

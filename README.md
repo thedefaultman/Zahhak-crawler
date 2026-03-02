@@ -6,19 +6,18 @@ A Chrome extension that captures web pages as training data and lets you control
 
 **Dataset Builder** — Enter a prompt describing the dataset you want. Zahhak searches the web (via Brave Search API or browser-based fallback), crawls the results, scores each page's quality with an LLM, classifies them as gold or silver tier, and exports clean JSONL + a quality report as a ZIP file.
 
-**Voice Commander** — Speak commands and the browser executes them in real-time. Say "go to GitHub" or "click the search bar and type machine learning" and watch it happen. Powered by PinchTab for browser automation, with three provider tiers to choose from.
+**Voice Commander** — Speak commands and the browser executes them in real-time. Say "go to GitHub" or "click the search bar and type machine learning" and watch it happen. Powered by PinchTab for browser automation, with local or OpenAI Realtime providers.
 
 **Browsing Capture** — Toggle on capture mode and browse normally. Every page is automatically converted to clean Markdown with YAML frontmatter. Export as JSONL training data, push to HuggingFace, or save as a ZIP.
 
-## Voice Commander Tiers
+## Voice Commander Providers
 
-| Tier | Cost | Latency | What You Need |
-|------|------|---------|---------------|
-| **Local** | Free | ~2-3s | Companion app with `--tier local` (downloads Whisperfile + Llamafile) |
-| **Groq** | Free tier available | ~1s | Groq API key from [console.groq.com](https://console.groq.com) |
+| Provider | Cost | Latency | What You Need |
+|----------|------|---------|---------------|
+| **Local** (default) | Free | ~2-3s | Companion app (auto-downloads PinchTab, Whisperfile, Llamafile) |
 | **OpenAI Realtime** | ~$0.06-0.24/min | Real-time | OpenAI API key |
 
-All tiers require the companion app running (it auto-downloads PinchTab on first launch).
+Both providers require the companion app running for browser automation via PinchTab.
 
 ## Getting Started
 
@@ -33,23 +32,14 @@ All tiers require the companion app running (it auto-downloads PinchTab on first
 
 1. Open the extension popup and expand **Voice Commander**
 2. Click the download button — it detects your OS automatically
-3. Run the downloaded companion binary — it auto-installs PinchTab
+3. Run the downloaded companion binary — it auto-downloads PinchTab, Whisperfile (~87MB), and Llamafile (~2.4GB) on first run
 4. Come back to the popup and click the mic button
-
-For the free local tier (no API keys, fully offline), run the companion with:
-
-```bash
-./voice-commander --tier local
-```
-
-This downloads Whisperfile (~87MB) and Llamafile (~2.4GB) on first run.
 
 ### 3. Configure API Keys (optional)
 
 Open the **API Configuration** section in the popup to set up:
 
 - **LLM Provider** (OpenAI, Anthropic, Ollama, or custom endpoint) — used for AI-enhanced capture and Dataset Builder quality scoring
-- **Groq API Key** — for the Groq voice tier
 - **Brave Search API Key** — for Dataset Builder (free key at [brave.com/search/api](https://brave.com/search/api/))
 - **HuggingFace Token** — for pushing datasets directly to HF Hub
 
@@ -101,7 +91,6 @@ Zahhak-crawler/
 │   └── build.sh                        # Cross-compile script
 ├── .github/workflows/
 │   └── companion-release.yml           # Auto-build binaries on tag push
-├── setup-repo.sh
 └── .gitignore
 ```
 
@@ -109,9 +98,8 @@ Zahhak-crawler/
 
 The companion is a single Go binary that manages all the local services Voice Commander needs:
 
-1. **On first run**: auto-downloads PinchTab (~12MB) for browser automation
-2. **With `--tier local`**: also downloads Whisperfile (~87MB) and Llamafile (~2.4GB)
-3. **Starts services**: PinchTab on port 9867, health API on port 9868
+1. **On first run**: auto-downloads PinchTab (~12MB), Whisperfile (~87MB), and Llamafile (~2.4GB)
+2. **Starts services**: PinchTab on port 9867, Whisperfile on port 8081, Llamafile on port 8080, health API on port 9868
 4. **Health endpoint**: The extension polls `localhost:9868/health` to check service status
 5. **Bridge token**: Auto-generated auth token shared between companion and extension
 

@@ -96,10 +96,13 @@ func (sm *ServiceManager) StartPinchTab() error {
 		return fmt.Errorf("PinchTab binary not found at %s", svc.BinaryPath)
 	}
 
+	profileDir := filepath.Join(sm.config.DataDir, "chrome-profile")
+
 	cmd := exec.Command(svc.BinaryPath)
 	cmd.Env = append(os.Environ(),
 		fmt.Sprintf("BRIDGE_PORT=%d", svc.Port),
 		fmt.Sprintf("BRIDGE_TOKEN=%s", sm.config.BridgeToken),
+		fmt.Sprintf("BRIDGE_PROFILE=%s", profileDir),
 		"BRIDGE_HEADLESS=true",
 		"BRIDGE_BIND=127.0.0.1",
 		"BRIDGE_NO_RESTORE=true",
@@ -184,6 +187,7 @@ func (sm *ServiceManager) StartLlamafile() error {
 
 	cmd := exec.Command(svc.BinaryPath,
 		"--server",
+		"--nobrowser",
 		"--port", fmt.Sprintf("%d", svc.Port),
 		"--host", "127.0.0.1",
 		"--ctx-size", "4096",

@@ -298,24 +298,9 @@
         <div class="field">
           <label for="vc-tier">Provider</label>
           <select id="vc-tier">
-            <option value="local">Local (Free, Offline)</option>
-            <option value="groq" selected>Groq (Budget Cloud)</option>
+            <option value="local" selected>Local (Free, Offline)</option>
             <option value="openai_realtime">OpenAI Realtime (Premium)</option>
           </select>
-        </div>
-
-        <div class="field" id="vc-groq-field">
-          <label for="vc-groq-key">Groq API Key</label>
-          <div class="input-group">
-            <input type="password" id="vc-groq-key" placeholder="gsk_...">
-            <button class="icon-btn" id="vc-groq-key-toggle" title="Show/hide key">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                <circle cx="12" cy="12" r="3"/>
-              </svg>
-            </button>
-          </div>
-          <div class="field-help">Free tier at <a href="https://console.groq.com" target="_blank">console.groq.com</a></div>
         </div>
 
         <div class="field hidden" id="vc-openai-notice">

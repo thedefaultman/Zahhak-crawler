@@ -90,9 +90,6 @@ const dsStatSilver = document.getElementById('ds-stat-silver');
 const vcHeader = document.getElementById('vc-header');
 const vcBody = document.getElementById('vc-body');
 const vcTierSelect = document.getElementById('vc-tier');
-const vcGroqField = document.getElementById('vc-groq-field');
-const vcGroqKey = document.getElementById('vc-groq-key');
-const vcGroqKeyToggle = document.getElementById('vc-groq-key-toggle');
 const vcOpenaiNotice = document.getElementById('vc-openai-notice');
 const vcSaveSettingsBtn = document.getElementById('vc-save-settings');
 const vcStatusBar = document.getElementById('vc-status-bar');
@@ -145,7 +142,7 @@ const ALL_KEYS = [
   'spaDetection', 'maxTokens', 'aiDelay', 'sanitizeMode',
   'huggingfaceToken', 'hfUsername', 'hfDatasetMode', 'hfDatasetRepo', 'hfPrivate',
   'braveApiKey',
-  'vcTier', 'vcGroqKey', 'vcBridgeToken'
+  'vcTier', 'vcBridgeToken'
 ];
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -204,7 +201,6 @@ async function loadState() {
   }
 
   if (state.vcTier) vcTierSelect.value = state.vcTier;
-  if (state.vcGroqKey) vcGroqKey.value = state.vcGroqKey;
   updateVCTierFields();
 
   updateCaptureStatusUI(state.isActive || false);
@@ -648,28 +644,12 @@ function setupEventListeners() {
 
   vcTierSelect.addEventListener('change', updateVCTierFields);
 
-  vcGroqKeyToggle.addEventListener('click', () => {
-    vcGroqKey.type = vcGroqKey.type === 'password' ? 'text' : 'password';
-  });
-
   vcSaveSettingsBtn.addEventListener('click', async () => {
     const settings = {
       tier: vcTierSelect.value,
-      groqKey: vcGroqKey.value.trim(),
     };
-    const result = await chrome.runtime.sendMessage({ type: 'VC_SAVE_SETTINGS', ...settings });
-
-    if (settings.tier === 'local') {
-      if (result?.localInstall) {
-        showToast('Local models installing — check companion terminal for progress', 'success');
-      } else if (result?.localInstallError) {
-        showToast('Settings saved! Start companion app to install local models.', 'success');
-      } else {
-        showToast('Voice settings saved!', 'success');
-      }
-    } else {
-      showToast('Voice settings saved!', 'success');
-    }
+    await chrome.runtime.sendMessage({ type: 'VC_SAVE_SETTINGS', ...settings });
+    showToast('Voice settings saved!', 'success');
   });
 
   vcMicBtn.addEventListener('click', () => {
@@ -1087,7 +1067,6 @@ const HF_PHASE_LABELS = {
 
 function updateVCTierFields() {
   const tier = vcTierSelect.value;
-  vcGroqField.classList.toggle('hidden', tier !== 'groq');
   vcOpenaiNotice.classList.toggle('hidden', tier !== 'openai_realtime');
 
   if (tier === 'openai_realtime') {
@@ -1114,11 +1093,8 @@ function updateVCServiceIndicators(data) {
   if (tier === 'local') {
     vcIndStt.classList.toggle('connected', !!data.whisper);
     vcIndLlm.classList.toggle('connected', !!data.llamafile);
-  } else if (tier === 'groq') {
-    vcIndStt.classList.toggle('connected', !!vcGroqKey.value.trim());
-    vcIndLlm.classList.toggle('connected', !!vcGroqKey.value.trim());
   } else if (tier === 'openai_realtime') {
-    vcIndStt.classList.toggle('connected', true); // Uses OpenAI key from API config
+    vcIndStt.classList.toggle('connected', true);
   }
 }
 
@@ -1201,11 +1177,6 @@ function setupCompanionDownloadLinks() {
 
 async function startVCListening() {
   const tier = vcTierSelect.value;
-
-  if (tier === 'groq' && !vcGroqKey.value.trim()) {
-    showToast('Enter your Groq API key first', 'error');
-    return;
-  }
 
   try {
     if (tier === 'openai_realtime') {
