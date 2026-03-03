@@ -250,20 +250,20 @@ wf.close()
 
 # Convert stereo to mono if needed
 if n_channels == 2:
-    samples = struct.unpack("<%dh" %% (len(raw_data) // 2), raw_data)
+    samples = struct.unpack("<%%dh" %% (len(raw_data) // 2), raw_data)
     mono = []
     for i in range(0, len(samples), 2):
         mono.append((samples[i] + samples[i+1]) // 2)
-    raw_data = struct.pack("<%dh" %% len(mono), *mono)
+    raw_data = struct.pack("<%%dh" %% len(mono), *mono)
     n_channels = 1
 
 # Simple nearest-neighbor resample to 16000 Hz if needed
 if sample_rate != 16000:
-    samples = struct.unpack("<%dh" %% (len(raw_data) // 2), raw_data)
+    samples = struct.unpack("<%%dh" %% (len(raw_data) // 2), raw_data)
     ratio = sample_rate / 16000.0
     new_len = int(len(samples) / ratio)
     resampled = [samples[int(i * ratio)] for i in range(new_len)]
-    raw_data = struct.pack("<%dh" %% len(resampled), *resampled)
+    raw_data = struct.pack("<%%dh" %% len(resampled), *resampled)
     sample_rate = 16000
 
 rec = KaldiRecognizer(model, sample_rate)
