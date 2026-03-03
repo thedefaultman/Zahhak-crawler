@@ -102,6 +102,9 @@ func LaunchDedicatedChrome(extensionPath, dataDir string) CDPResult {
 		return CDPResult{Method: "fallback", Error: fmt.Errorf("Chrome started but CDP probe failed: %w", err)}
 	}
 
+	// Open a real page so the extension content scripts activate
+	openInitialPage(port)
+
 	fmt.Println("[Chrome] Ready with extension loaded.")
 	return CDPResult{CDPURL: url, Method: "launched"}
 }
@@ -209,4 +212,17 @@ func waitForDevToolsActivePort(profileDir string, timeout time.Duration) (int, e
 		time.Sleep(pollInterval)
 	}
 	return 0, fmt.Errorf("timed out waiting for Chrome to write DevToolsActivePort")
+}
+
+// openInitialPage uses CDP's REST API to open a page in the dedicated Chrome,
+// so the extension's content scripts activate on a real page.
+func openInitialPage(cdpPort int) {
+	client := &http.Client{Timeout: 5 * time.Second}
+	pageURL := fmt.Sprintf("http://127.0.0.1:%d/json/new?https://www.google.com", cdpPort)
+	resp, err := client.Get(pageURL)
+	if err != nil {
+		log.Printf("[Chrome] Could not open initial page: %v", err)
+		return
+	}
+	resp.Body.Close()
 }

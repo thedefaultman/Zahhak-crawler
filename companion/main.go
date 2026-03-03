@@ -25,6 +25,9 @@ type Config struct {
 	CDPURL       string `json:"cdpUrl,omitempty"`
 }
 
+// CompanionVersion is the version of the companion app, must match extension manifest version.
+const CompanionVersion = "2.0.0"
+
 var (
 	config   Config
 	services *ServiceManager
@@ -210,7 +213,7 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 		ModelRec:    &modelRec,
 		BridgeToken: config.BridgeToken,
 		Platform:    runtime.GOOS + "/" + runtime.GOARCH,
-		Version:     "2.0.0",
+		Version:     CompanionVersion,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

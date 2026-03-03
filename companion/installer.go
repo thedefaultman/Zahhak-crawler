@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -120,15 +121,36 @@ func downloadFile(url string, destPath string) error {
 // ExtensionDownloadURL is the URL for the Zahhak extension zip (platform-independent).
 var ExtensionDownloadURL = "https://github.com/thedefaultman/Zahhak-crawler/releases/latest/download/zahhak-extension.zip"
 
+// readExtensionVersion reads the "version" field from a manifest.json file.
+func readExtensionVersion(manifestPath string) string {
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return ""
+	}
+	var manifest struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return ""
+	}
+	return manifest.Version
+}
+
 // InstallExtension downloads and extracts the Zahhak Chrome extension.
+// Re-downloads if the installed version doesn't match the companion version.
 func InstallExtension(dataDir string) error {
 	extDir := filepath.Join(dataDir, "extension")
 	manifestPath := filepath.Join(extDir, "manifest.json")
 
-	// Skip if already installed
-	if _, err := os.Stat(manifestPath); err == nil {
-		log.Println("[Extension] Already installed")
-		return nil
+	// Check if installed and up-to-date
+	installedVersion := readExtensionVersion(manifestPath)
+	if installedVersion != "" {
+		if installedVersion == CompanionVersion {
+			log.Printf("[Extension] Already installed (v%s)", installedVersion)
+			return nil
+		}
+		log.Printf("[Extension] Updating from v%s to v%s...", installedVersion, CompanionVersion)
+		os.RemoveAll(extDir)
 	}
 
 	zipPath := filepath.Join(dataDir, "extension.zip")
@@ -155,7 +177,7 @@ func InstallExtension(dataDir string) error {
 		return fmt.Errorf("extension extraction succeeded but manifest.json not found")
 	}
 
-	log.Printf("[Extension] Installed to %s", extDir)
+	log.Printf("[Extension] Installed v%s to %s", readExtensionVersion(manifestPath), extDir)
 	return nil
 }
 
