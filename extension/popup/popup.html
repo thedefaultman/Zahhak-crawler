@@ -21,6 +21,23 @@
       <h1>Browsing Capture</h1>
     </div>
 
+    <!-- Tab bar -->
+    <div class="tab-bar">
+      <button class="tab-btn active" id="tab-btn-local">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+        </svg>
+        Local
+      </button>
+      <button class="tab-btn" id="tab-btn-thirdparty">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+        </svg>
+        Third Party
+      </button>
+    </div>
+
+    <!-- SHARED: Capture Mode -->
     <div class="section toggle-section">
       <div class="toggle-row">
         <div>
@@ -34,6 +51,7 @@
       </div>
     </div>
 
+    <!-- SHARED: Stats Bar -->
     <div class="stats-bar" id="stats-bar">
       <div class="stat">
         <span class="stat-value" id="capture-count">0</span>
@@ -54,54 +72,127 @@
       <span class="enhance-status-text" id="enhance-status-text">Enhancing...</span>
     </div>
 
-    <div class="section">
-      <div class="section-header" id="api-header">
-        <span>API Configuration</span>
-        <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="6 9 12 15 18 9"/>
-        </svg>
-      </div>
-      <div class="section-body" id="api-body">
-        <div class="field">
-          <label for="provider-select">Provider</label>
-          <select id="provider-select">
-            <option value="openai">OpenAI</option>
-            <option value="anthropic">Anthropic</option>
-            <option value="ollama">Ollama (Local)</option>
-            <option value="custom">Custom Endpoint</option>
-          </select>
+    <!-- LOCAL TAB: Companion Status Panel -->
+    <div class="tab-content" id="tab-local">
+      <div class="section">
+        <div class="section-header" id="companion-header">
+          <span>Companion App</span>
+          <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
         </div>
-        <div class="field">
-          <label for="api-token">API Token</label>
-          <div class="input-group">
-            <input type="password" id="api-token" placeholder="sk-...">
-            <button class="icon-btn" id="toggle-token-visibility" title="Show/hide token">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                <circle cx="12" cy="12" r="3"/>
-              </svg>
-            </button>
+        <div class="section-body" id="companion-body">
+          <div class="companion-status-panel" id="companion-status-panel">
+            <div class="companion-connection" id="companion-connection">
+              <span class="companion-dot disconnected" id="companion-dot"></span>
+              <span id="companion-connection-text">Not connected</span>
+            </div>
+
+            <div class="companion-services" id="companion-services">
+              <span class="vc-indicator" id="comp-ind-ollama">
+                <span class="vc-dot"></span>Ollama
+              </span>
+              <span class="vc-indicator" id="comp-ind-vosk">
+                <span class="vc-dot"></span>Vosk
+              </span>
+              <span class="vc-indicator" id="comp-ind-pinchtab">
+                <span class="vc-dot"></span>PinchTab
+              </span>
+            </div>
+
+            <div class="companion-hardware hidden" id="companion-hardware">
+              <div class="companion-hw-row">
+                <span class="companion-hw-label">GPU</span>
+                <span class="companion-hw-value" id="hw-gpu">—</span>
+              </div>
+              <div class="companion-hw-row">
+                <span class="companion-hw-label">VRAM</span>
+                <span class="companion-hw-value" id="hw-vram">—</span>
+              </div>
+              <div class="companion-hw-row">
+                <span class="companion-hw-label">RAM</span>
+                <span class="companion-hw-value" id="hw-ram">—</span>
+              </div>
+              <div class="companion-hw-row">
+                <span class="companion-hw-label">Model</span>
+                <span class="companion-hw-value companion-model-name" id="hw-model">—</span>
+              </div>
+            </div>
           </div>
+
+          <div class="companion-download" id="companion-download">
+            <strong>Companion app required</strong>
+            <p>Download and run the companion app to enable local AI features.</p>
+            <div class="vc-setup-steps">
+              <div class="vc-setup-step">
+                <span class="vc-step-num">1</span>
+                <span>Download the companion app:</span>
+              </div>
+              <a href="#" class="btn btn-primary btn-full vc-dl-btn" id="companion-dl-btn" target="_blank">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span id="companion-dl-label">Download for Windows</span>
+              </a>
+              <div class="vc-setup-step">
+                <span class="vc-step-num">2</span>
+                <span>Run it — it auto-detects your hardware and installs everything.</span>
+              </div>
+              <div class="vc-setup-step">
+                <span class="vc-step-num">3</span>
+                <span>Come back here — all local AI features will activate.</span>
+              </div>
+            </div>
+          </div>
+
+          <button class="btn btn-secondary btn-full" id="companion-check" style="margin-top:8px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            Check Connection
+          </button>
         </div>
-        <div class="field hidden" id="custom-endpoint-field">
-          <label for="custom-endpoint">Custom Endpoint URL</label>
-          <input type="url" id="custom-endpoint" placeholder="https://api.example.com/v1/chat/completions">
-        </div>
-        <div class="field" id="model-field">
-          <label for="model-select">Model</label>
-          <select id="model-select">
-          </select>
-          <div class="field-help">Lightweight = faster &amp; cheaper · Powerful = best quality</div>
-        </div>
-        <button class="btn btn-secondary" id="save-api">Save API Settings</button>
       </div>
     </div>
 
+    <!-- THIRD PARTY TAB: OpenAI Config -->
+    <div class="tab-content hidden" id="tab-thirdparty">
+      <div class="section">
+        <div class="section-header" id="tp-api-header">
+          <span>OpenAI Configuration</span>
+          <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </div>
+        <div class="section-body" id="tp-api-body">
+          <div class="field">
+            <label for="tp-api-token">OpenAI API Key</label>
+            <div class="input-group">
+              <input type="password" id="tp-api-token" placeholder="sk-...">
+              <button class="icon-btn" id="tp-toggle-token" title="Show/hide token">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="tp-model-select">Model</label>
+            <select id="tp-model-select">
+              <option value="gpt-5-nano">GPT-5 Nano — fastest, cheapest</option>
+              <option value="gpt-5-mini">GPT-5 Mini — balanced</option>
+              <option value="gpt-5">GPT-5 — full reasoning power</option>
+            </select>
+            <div class="field-help">Used for AI extraction, dataset builder, and sanitization</div>
+          </div>
+          <button class="btn btn-secondary" id="tp-save-api">Save API Settings</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SHARED: AI-Enhanced Extraction -->
     <div class="section">
       <div class="toggle-row">
         <div>
           <span class="label">AI-Enhanced Extraction</span>
-          <span class="sublabel">Use LLM to improve markdown quality</span>
+          <span class="sublabel" id="ai-enhance-sublabel">Use LLM to improve markdown quality</span>
         </div>
         <label class="switch">
           <input type="checkbox" id="ai-toggle">
@@ -110,6 +201,7 @@
       </div>
     </div>
 
+    <!-- SHARED: Crawl Mode -->
     <div class="section">
       <div class="section-header" id="crawl-header">
         <span>Crawl Mode</span>
@@ -163,6 +255,7 @@
       </div>
     </div>
 
+    <!-- SHARED: Dataset Builder -->
     <div class="section">
       <div class="section-header collapsed" id="ds-header">
         <span>Dataset Builder</span>
@@ -283,6 +376,7 @@
       </div>
     </div>
 
+    <!-- SHARED: Voice Commander (with conditional elements per tab) -->
     <div class="section">
       <div class="section-header collapsed" id="vc-header">
         <span>Voice Commander</span>
@@ -295,19 +389,10 @@
           Speak commands to control the browser in real-time. Requires the companion app for browser automation.
         </div>
 
-        <div class="field">
-          <label for="vc-tier">Provider</label>
-          <select id="vc-tier">
-            <option value="local" selected>Local (Free, Offline)</option>
-            <option value="openai_realtime">OpenAI Realtime (Premium)</option>
-          </select>
-        </div>
-
+        <!-- OpenAI Realtime notice (shown only in Third Party tab) -->
         <div class="field hidden" id="vc-openai-notice">
-          <div class="field-help" style="color:#FF9153;">Uses your OpenAI API key from API Configuration above. ~$0.06/min input + $0.24/min output.</div>
+          <div class="field-help" style="color:#FF9153;">Uses your OpenAI API key. ~$0.06/min input + $0.24/min output via OpenAI Realtime.</div>
         </div>
-
-        <button class="btn btn-secondary" id="vc-save-settings">Save Voice Settings</button>
 
         <div class="vc-status-bar" id="vc-status-bar">
           <span class="vc-indicator" id="vc-ind-pinchtab">
@@ -321,42 +406,20 @@
           </span>
         </div>
 
+        <!-- Download banner (shown when companion not connected, for both tabs) -->
         <div class="vc-download-banner hidden" id="vc-download-banner">
           <strong>Companion app required</strong>
-          <p>Download and run the Voice Commander companion app to enable voice-controlled browser automation.</p>
+          <p>Download and run the companion app to enable voice-controlled browser automation.</p>
           <div class="vc-setup-steps">
             <div class="vc-setup-step">
               <span class="vc-step-num">1</span>
-              <span>Download for your platform:</span>
-            </div>
-            <div class="vc-platform-btns" id="vc-platform-btns">
-              <a href="#" class="btn btn-primary btn-full vc-dl-btn" id="vc-dl-recommended" target="_blank">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                <span id="vc-dl-recommended-label">Download</span>
-              </a>
-              <details class="vc-other-platforms">
-                <summary>Other platforms</summary>
-                <div class="vc-platform-list" id="vc-platform-list">
-                  <a href="#" class="vc-platform-link" data-platform="windows">Windows (x64)</a>
-                  <a href="#" class="vc-platform-link" data-platform="mac-intel">macOS (Intel)</a>
-                  <a href="#" class="vc-platform-link" data-platform="mac-arm">macOS (Apple Silicon)</a>
-                  <a href="#" class="vc-platform-link" data-platform="linux">Linux (x64)</a>
-                </div>
-              </details>
+              <span>Download the companion app (see Local tab)</span>
             </div>
             <div class="vc-setup-step">
               <span class="vc-step-num">2</span>
-              <span>Run the downloaded file — it auto-installs everything.</span>
-            </div>
-            <div class="vc-setup-step">
-              <span class="vc-step-num">3</span>
-              <span>Come back here and click the mic button!</span>
+              <span>Run it — PinchTab will auto-start.</span>
             </div>
           </div>
-          <button class="btn btn-secondary btn-full" id="vc-check-companion" style="margin-top:8px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-            Check Connection
-          </button>
         </div>
 
         <div class="vc-mic-container hidden" id="vc-mic-container">
@@ -377,6 +440,7 @@
       </div>
     </div>
 
+    <!-- SHARED: Export -->
     <div class="section export-section">
       <div class="field">
         <label for="export-folder-name">Export Folder Name</label>
@@ -426,6 +490,7 @@
       </div>
     </div>
 
+    <!-- SHARED: HuggingFace (with conditional fine-tune for Local tab) -->
     <div class="section">
       <div class="section-header" id="hf-header">
         <span>HuggingFace</span>
@@ -500,9 +565,43 @@
           <a href="#" id="hf-link-dataset" target="_blank" class="hf-link">View Dataset on HuggingFace</a>
           <a href="#" id="hf-link-autotrain" target="_blank" class="hf-link">Fine-tune with AutoTrain</a>
         </div>
+
+        <!-- Fine-tune section (shown only in Local tab) -->
+        <div class="hf-finetune-section hidden" id="hf-finetune-section">
+          <div class="hf-finetune-divider"></div>
+          <div class="field-help" style="margin-bottom:8px;">Fine-tune your local Qwen model on your captured training data via HuggingFace AutoTrain.</div>
+          <div class="hf-finetune-info">
+            <div class="companion-hw-row">
+              <span class="companion-hw-label">Base Model</span>
+              <span class="companion-hw-value" id="ft-base-model">—</span>
+            </div>
+            <div class="companion-hw-row">
+              <span class="companion-hw-label">Dataset</span>
+              <span class="companion-hw-value" id="ft-dataset">—</span>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-full" id="hf-finetune-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+              <path d="M2 17l10 5 10-5"/>
+              <path d="M2 12l10 5 10-5"/>
+            </svg>
+            Fine-tune on HuggingFace
+          </button>
+          <div class="field-help" style="color:#aaa;margin-top:4px;">
+            Requires HF Pro ($9/mo) or pay-per-use compute. Model adapts to your work style over time.
+          </div>
+          <div class="hf-finetune-progress hidden" id="hf-finetune-progress">
+            <div class="export-progress-bar-track">
+              <div class="export-progress-bar-fill" id="hf-finetune-bar" style="width:0%"></div>
+            </div>
+            <div class="hf-finetune-status" id="hf-finetune-status">Starting fine-tune job...</div>
+          </div>
+        </div>
       </div>
     </div>
 
+    <!-- SHARED: Settings -->
     <div class="section">
       <div class="section-header" id="settings-header">
         <span>Settings</span>
@@ -555,6 +654,7 @@
       </div>
     </div>
 
+    <!-- SHARED: Recent Captures -->
     <div class="section">
       <div class="section-header" id="recent-header">
         <span>Recent Captures</span>
@@ -570,7 +670,7 @@
     </div>
 
     <div class="footer">
-      <span class="version">v1.0.0</span>
+      <span class="version">v2.0.0</span>
     </div>
   </div>
 

@@ -13,21 +13,8 @@ import (
 // DownloadURLs contains per-platform binary download URLs keyed by service name.
 var DownloadURLs = map[string]map[string]string{
 	"pinchtab": {
-		"darwin/amd64":  "https://github.com/pinchtab/pinchtab/releases/latest/download/pinchtab-darwin-amd64",
-		"darwin/arm64":  "https://github.com/pinchtab/pinchtab/releases/latest/download/pinchtab-darwin-arm64",
-		"linux/amd64":   "https://github.com/pinchtab/pinchtab/releases/latest/download/pinchtab-linux-amd64",
-		"linux/arm64":   "https://github.com/pinchtab/pinchtab/releases/latest/download/pinchtab-linux-arm64",
 		"windows/amd64": "https://github.com/pinchtab/pinchtab/releases/latest/download/pinchtab-windows-amd64.exe",
 	},
-}
-
-// WhisperfileURL points to the cross-platform whisperfile with a baked-in model (~87 MB).
-var WhisperfileURL = "https://huggingface.co/Mozilla/whisperfile/resolve/main/whisper-tiny.en.llamafile"
-
-// LlamafileURLs for the bundled model
-var LlamafileURLs = map[string]string{
-	// Phi-3 Mini Q4 llamafile — single executable with model baked in (~2.4GB)
-	"llamafile": "https://huggingface.co/Mozilla/Phi-3-mini-4k-instruct-llamafile/resolve/main/Phi-3-mini-4k-instruct.Q4_K_M.llamafile",
 }
 
 // InstallService downloads the named service binary for the current platform into dataDir/bin.
@@ -67,74 +54,6 @@ func InstallService(name string, dataDir string) error {
 	}
 
 	log.Printf("Installed %s to %s", name, destPath)
-	return nil
-}
-
-// InstallWhisperfile fetches the whisperfile binary (model + runtime in one file) into dataDir/bin.
-func InstallWhisperfile(dataDir string) error {
-	binDir := filepath.Join(dataDir, "bin")
-	if err := os.MkdirAll(binDir, 0755); err != nil {
-		return fmt.Errorf("cannot create bin directory: %w", err)
-	}
-
-	ext := ""
-	if runtime.GOOS == "windows" {
-		ext = ".exe"
-	}
-	destPath := filepath.Join(binDir, "whisperfile"+ext)
-
-	if _, err := os.Stat(destPath); err == nil {
-		log.Printf("Whisperfile already exists at %s", destPath)
-		return nil
-	}
-
-	log.Printf("Downloading whisperfile (~87MB) from %s...", WhisperfileURL)
-	if err := downloadFile(WhisperfileURL, destPath); err != nil {
-		return fmt.Errorf("download failed: %w", err)
-	}
-
-	if runtime.GOOS != "windows" {
-		if err := os.Chmod(destPath, 0755); err != nil {
-			return fmt.Errorf("chmod failed: %w", err)
-		}
-	}
-
-	log.Printf("Installed whisperfile to %s", destPath)
-	return nil
-}
-
-// InstallLlamafile fetches the llamafile binary (model + runtime) into dataDir/bin.
-func InstallLlamafile(dataDir string) error {
-	url := LlamafileURLs["llamafile"]
-
-	binDir := filepath.Join(dataDir, "bin")
-	if err := os.MkdirAll(binDir, 0755); err != nil {
-		return fmt.Errorf("cannot create bin directory: %w", err)
-	}
-
-	ext := ""
-	if runtime.GOOS == "windows" {
-		ext = ".exe"
-	}
-	destPath := filepath.Join(binDir, "llamafile"+ext)
-
-	if _, err := os.Stat(destPath); err == nil {
-		log.Printf("Llamafile already exists at %s", destPath)
-		return nil
-	}
-
-	log.Printf("Downloading llamafile (~2.4GB) from %s...", url)
-	if err := downloadFile(url, destPath); err != nil {
-		return fmt.Errorf("download failed: %w", err)
-	}
-
-	if runtime.GOOS != "windows" {
-		if err := os.Chmod(destPath, 0755); err != nil {
-			return fmt.Errorf("chmod failed: %w", err)
-		}
-	}
-
-	log.Printf("Installed llamafile to %s", destPath)
 	return nil
 }
 

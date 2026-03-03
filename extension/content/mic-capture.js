@@ -1,6 +1,6 @@
 // Mic capture — injected into active tab for Voice Commander.
 // Push-to-talk: hold Right Alt to record, release to send.
-// Captures raw PCM and encodes as WAV (Whisperfile doesn't support WebM).
+// Captures raw PCM and encodes as WAV for Vosk STT processing.
 
 (async function() {
   if (window.__vcMicActive) {
@@ -101,7 +101,7 @@
       }
     });
 
-    // Use browser's native sample rate — Whisperfile handles resampling
+    // Use browser's native sample rate — Vosk handles resampling
     audioContext = new AudioContext();
     console.log('[VoiceCmdr] AudioContext sample rate:', audioContext.sampleRate);
 

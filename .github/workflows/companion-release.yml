@@ -3,7 +3,7 @@ name: Build & Release Companion App
 on:
   push:
     tags:
-      - 'v*'  # Trigger on version tags like v0.1.0, v1.0.0
+      - 'v*'  # Trigger on version tags like v2.0.0
   workflow_dispatch:  # Allow manual trigger
 
 permissions:
@@ -12,26 +12,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - goos: windows
-            goarch: amd64
-            ext: .exe
-            name: voice-commander-windows-amd64.exe
-          - goos: darwin
-            goarch: amd64
-            ext: ""
-            name: voice-commander-darwin-amd64
-          - goos: darwin
-            goarch: arm64
-            ext: ""
-            name: voice-commander-darwin-arm64
-          - goos: linux
-            goarch: amd64
-            ext: ""
-            name: voice-commander-linux-amd64
-
     steps:
       - uses: actions/checkout@v4
 
@@ -42,15 +22,15 @@ jobs:
       - name: Build
         working-directory: companion
         env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-        run: go build -ldflags="-s -w" -o ../dist/${{ matrix.name }} .
+          GOOS: windows
+          GOARCH: amd64
+        run: go build -ldflags="-s -w" -o ../dist/zahhak-companion-windows-amd64.exe .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.name }}
-          path: dist/${{ matrix.name }}
+          name: zahhak-companion-windows-amd64.exe
+          path: dist/zahhak-companion-windows-amd64.exe
 
   release:
     needs: build
@@ -63,34 +43,31 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Make Unix binaries executable
-        run: |
-          chmod +x dist/voice-commander-darwin-amd64 || true
-          chmod +x dist/voice-commander-darwin-arm64 || true
-          chmod +x dist/voice-commander-linux-amd64 || true
-
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           files: |
-            dist/voice-commander-windows-amd64.exe
-            dist/voice-commander-darwin-amd64
-            dist/voice-commander-darwin-arm64
-            dist/voice-commander-linux-amd64
+            dist/zahhak-companion-windows-amd64.exe
           body: |
-            ## Voice Commander Companion App
+            ## Zahhak Companion App
 
-            Download the binary for your platform, then just double-click to run.
-            It will automatically download PinchTab and all required components on first launch.
+            Download and run the companion binary to enable Local mode in the Zahhak extension.
 
             | Platform | File |
             |----------|------|
-            | Windows | `voice-commander-windows-amd64.exe` |
-            | macOS (Intel) | `voice-commander-darwin-amd64` |
-            | macOS (Apple Silicon) | `voice-commander-darwin-arm64` |
-            | Linux | `voice-commander-linux-amd64` |
+            | Windows (x64) | `zahhak-companion-windows-amd64.exe` |
 
             ### First run
-            Just run the binary — it auto-downloads PinchTab (~12MB).
-            For the **Local** tier (free/offline), run with: `--tier local`
+
+            Just run the binary — it automatically:
+            - Detects your hardware (CPU, RAM, GPU/VRAM)
+            - Installs Ollama and pulls the best Qwen 3.5 model for your system
+            - Downloads the Vosk speech-to-text model (~40MB) and installs the Python package
+            - Downloads PinchTab for browser automation (~12MB)
+            - Connects to Chrome via DevTools Protocol
+
+            ### Requirements
+            - Windows 10/11 (x64)
+            - Chrome browser installed
+            - Python 3.x installed and in PATH ([python.org](https://python.org))

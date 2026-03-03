@@ -1,23 +1,31 @@
 # Zahhak Crawler
 
-A Chrome extension that captures web pages as training data and lets you control your browser with voice commands.
+A Chrome extension that captures web pages as training data, lets you control your browser with voice commands, and fine-tunes a local AI model that adapts to your workflow.
 
 ## What It Does
 
+**Two Modes** — The extension has two tabs: **Local** (fully offline, free, powered by a companion app) and **Third Party** (OpenAI API). All AI features work through whichever mode you choose.
+
 **Dataset Builder** — Enter a prompt describing the dataset you want. Zahhak searches the web (via Brave Search API or browser-based fallback), crawls the results, scores each page's quality with an LLM, classifies them as gold or silver tier, and exports clean JSONL + a quality report as a ZIP file.
 
-**Voice Commander** — Speak commands and the browser executes them in real-time. Say "go to GitHub" or "click the search bar and type machine learning" and watch it happen. Powered by PinchTab for browser automation, with local or OpenAI Realtime providers.
+**Voice Commander** — Speak commands and the browser executes them in real-time. Say "go to GitHub" or "click the search bar and type machine learning" and watch it happen. Powered by PinchTab for browser automation.
 
 **Browsing Capture** — Toggle on capture mode and browse normally. Every page is automatically converted to clean Markdown with YAML frontmatter. Export as JSONL training data, push to HuggingFace, or save as a ZIP.
 
-## Voice Commander Providers
+**Fine-Tuning** — In Local mode, push your captured training data to HuggingFace and fine-tune your model with one click via AutoTrain. The model adapts to your work style over time.
 
-| Provider | Cost | Latency | What You Need |
-|----------|------|---------|---------------|
-| **Local** (default) | Free | ~2-3s | Companion app (auto-downloads PinchTab, Whisperfile, Llamafile) |
-| **OpenAI Realtime** | ~$0.06-0.24/min | Real-time | OpenAI API key |
+## Local vs Third Party
 
-Both providers require the companion app running for browser automation via PinchTab.
+| Feature | Local (Free) | Third Party (OpenAI) |
+|---------|-------------|---------------------|
+| AI-Enhanced Extraction | Ollama (Qwen 3.5) | OpenAI API |
+| Voice Commander | Vosk STT + Ollama + PinchTab | OpenAI Realtime WebRTC + PinchTab |
+| Dataset Builder Scoring | Ollama (Qwen 3.5) | OpenAI API |
+| Fine-Tuning | HuggingFace AutoTrain (one-click) | Not available |
+| Cost | Free (runs on your hardware) | ~$0.06-0.24/min for voice, per-token for AI |
+| Requirements | Companion app (Windows) | OpenAI API key |
+
+Both modes use the companion app for browser automation via PinchTab.
 
 ## Getting Started
 
@@ -28,26 +36,55 @@ Both providers require the companion app running for browser automation via Pinc
 3. Enable **Developer mode** (top-right toggle)
 4. Click **Load unpacked** and select the `extension/` folder
 
-### 2. Set Up Voice Commander (optional)
+### 2. Local Mode Setup
 
-1. Open the extension popup and expand **Voice Commander**
-2. Click the download button — it detects your OS automatically
-3. Run the downloaded companion binary — it auto-downloads PinchTab, Whisperfile (~87MB), and Llamafile (~2.4GB) on first run
-4. Come back to the popup and click the mic button
+1. Open the extension popup — it defaults to the **Local** tab
+2. Click the download button in the Companion Status panel
+3. Run the companion binary — it automatically:
+   - Detects your hardware (CPU, RAM, GPU/VRAM)
+   - Installs Ollama and pulls the best Qwen 3.5 model for your system
+   - Downloads the Vosk speech-to-text model (~40MB) and auto-installs the Python package
+   - Downloads PinchTab for browser automation
+   - Detects Chrome and connects via DevTools Protocol
+4. The Companion Status panel shows green indicators when services are ready
 
-### 3. Configure API Keys (optional)
+### 3. Third Party Mode Setup
 
-Open the **API Configuration** section in the popup to set up:
+1. Switch to the **Third Party** tab in the extension popup
+2. Enter your OpenAI API key and select a model
+3. Click Save — all AI features now use OpenAI
 
-- **LLM Provider** (OpenAI, Anthropic, Ollama, or custom endpoint) — used for AI-enhanced capture and Dataset Builder quality scoring
-- **Brave Search API Key** — for Dataset Builder (free key at [brave.com/search/api](https://brave.com/search/api/))
-- **HuggingFace Token** — for pushing datasets directly to HF Hub
+### 4. Configure Additional Keys (optional)
+
+- **Brave Search API Key** — for Dataset Builder web search ([brave.com/search/api](https://brave.com/search/api/))
+- **HuggingFace Token** — for pushing datasets to HF Hub and fine-tuning
+
+## Hardware Requirements (Local Mode)
+
+The companion app detects your hardware and automatically selects the right model:
+
+| Hardware | Model Selected | Download Size |
+|----------|---------------|---------------|
+| VRAM >= 8GB or RAM >= 32GB | `qwen3.5:8b` | ~5 GB |
+| VRAM >= 4GB or RAM >= 16GB | `qwen3.5:4b` | ~2.7 GB |
+| VRAM >= 2GB or RAM >= 8GB | `qwen3.5:1.5b` | ~1 GB |
+| Minimal hardware | `qwen3.5:0.6b` | ~400 MB |
+
+## Fine-Tuning Your Model
+
+1. Capture pages with browsing capture or the Dataset Builder
+2. Push your training data to HuggingFace (in the HuggingFace section)
+3. Click **Fine-tune Model** in the Local tab
+4. The companion sends your dataset to HuggingFace AutoTrain for QLoRA fine-tuning
+5. When complete, the fine-tuned model is loaded into Ollama automatically
+
+AutoTrain requires HuggingFace Pro ($9/mo) or pay-per-use compute.
 
 ## Export Formats
 
 **ZIP Export** contains per-domain folders with Markdown notes and JSONL training data.
 
-**JSONL** uses the conversation format compatible with OpenAI and Anthropic fine-tuning:
+**JSONL** uses the conversation format compatible with fine-tuning:
 
 ```json
 {
@@ -70,38 +107,49 @@ Zahhak-crawler/
 ├── extension/                          # Chrome extension (Manifest V3)
 │   ├── manifest.json
 │   ├── popup/                          # Extension popup UI
-│   │   ├── popup.html
+│   │   ├── popup.html                  # Two-tab layout (Local / Third Party)
 │   │   ├── popup.css
-│   │   └── popup.js
+│   │   └── popup.js                    # Tab switching, companion polling, mode state
 │   ├── background/
-│   │   └── service-worker.js           # Orchestrator: captures, AI, voice commands
+│   │   └── service-worker.js           # Mode-aware AI routing, voice commands, capture
 │   ├── content/
-│   │   └── content.js                  # Page extraction + Markdown conversion
+│   │   ├── content.js                  # Page extraction + Markdown conversion
+│   │   ├── mic-capture.js              # Push-to-talk WAV capture for Vosk STT
+│   │   └── realtime-session.js         # OpenAI Realtime WebRTC session
 │   └── lib/
 │       ├── turndown.min.js             # HTML → Markdown
-│       ├── readability.min.js          # Article content extraction
 │       ├── defuddle.min.js             # Content cleaning
-│       ├── jszip.min.js               # ZIP export
+│       ├── jszip.min.js                # ZIP export
 │       └── audio-worklet-processor.js  # Voice activity detection
-├── companion/                          # Voice Commander companion app (Go)
-│   ├── main.go                         # Entry point, auto-install, health server
-│   ├── services.go                     # PinchTab/Whisper/Llamafile process manager
-│   ├── installer.go                    # Binary downloader with progress
+├── companion/                          # Zahhak Companion app (Go, Windows)
+│   ├── main.go                         # Entry point, hardware detection, health server
+│   ├── services.go                     # PinchTab process manager + Ollama/Vosk status
+│   ├── hardware.go                     # Windows hardware detection (RAM, CPU, GPU/VRAM)
+│   ├── ollama.go                       # Ollama install, serve, model pull
+│   ├── vosk.go                         # Vosk STT model management + /stt endpoint
+│   ├── finetune.go                     # HuggingFace AutoTrain API integration
+│   ├── chrome.go                       # Chrome CDP detection + restart
+│   ├── installer.go                    # PinchTab binary downloader
 │   ├── go.mod
-│   └── build.sh                        # Cross-compile script
+│   └── build.sh                        # Build script (Windows target)
 ├── .github/workflows/
-│   └── companion-release.yml           # Auto-build binaries on tag push
+│   └── companion-release.yml           # Auto-build binary on tag push
 └── .gitignore
 ```
 
 ## How the Companion App Works
 
-The companion is a single Go binary that manages all the local services Voice Commander needs:
+The companion is a single Go binary (Windows) that manages all local AI services:
 
-1. **On first run**: auto-downloads PinchTab (~12MB), Whisperfile (~87MB), and Llamafile (~2.4GB)
-2. **Starts services**: PinchTab on port 9867, Whisperfile on port 8081, Llamafile on port 8080, health API on port 9868
-4. **Health endpoint**: The extension polls `localhost:9868/health` to check service status
-5. **Bridge token**: Auto-generated auth token shared between companion and extension
+1. **Hardware detection**: Reads CPU, RAM, and GPU/VRAM via Windows APIs and wmic/nvidia-smi
+2. **Model selection**: Picks the best Qwen 3.5 variant for your hardware
+3. **Ollama**: Installs if needed, starts the server, pulls the recommended model
+4. **Vosk STT**: Downloads a lightweight speech-to-text model (~40MB) and auto-installs the Python `vosk` package
+5. **PinchTab**: Browser automation via Chrome DevTools Protocol (port 9867)
+6. **Health API**: Extension polls `localhost:9868/health` for service status, hardware info, and model name
+7. **STT endpoint**: `POST localhost:9868/stt` accepts WAV audio, returns transcribed text
+8. **Fine-tune endpoints**: `/finetune/start` and `/finetune/status` for AutoTrain integration
+9. **Bridge token**: Auto-generated auth token shared between companion and extension
 
 ## Settings
 
@@ -122,7 +170,7 @@ cd companion
 bash build.sh
 ```
 
-Outputs binaries for Windows, macOS (Intel + ARM), and Linux in `companion/dist/`.
+Outputs `zahhak-companion-windows-amd64.exe` in `companion/dist/`.
 
 ## Contributing
 

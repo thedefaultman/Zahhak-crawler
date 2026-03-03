@@ -17,26 +17,26 @@ import (
 
 // Config holds CLI flag values and the generated bridge token.
 type Config struct {
-	PinchTabPort  int    `json:"pinchtabPort"`
-	HealthPort    int    `json:"healthPort"`
-	WhisperPort   int    `json:"whisperPort"`
-	LlamafilePort int    `json:"llamafilePort"`
-	BridgeToken   string `json:"bridgeToken"`
-	DataDir       string `json:"dataDir"`
+	PinchTabPort int    `json:"pinchtabPort"`
+	HealthPort   int    `json:"healthPort"`
+	BridgeToken  string `json:"bridgeToken"`
+	DataDir      string `json:"dataDir"`
+	CDPURL       string `json:"cdpUrl,omitempty"`
 }
 
 var (
 	config   Config
 	services *ServiceManager
+	hwInfo   HardwareInfo
+	modelRec ModelRecommendation
 )
 
 func main() {
 	ptPort := flag.Int("pinchtab-port", 9867, "PinchTab server port")
 	healthPort := flag.Int("health-port", 9868, "Health check API port")
-	whisperPort := flag.Int("whisper-port", 8081, "Whisperfile server port")
-	llamaPort := flag.Int("llama-port", 8080, "Llamafile server port")
 	dataDir := flag.String("data-dir", "", "Directory for downloaded binaries and models")
 	skipInstall := flag.Bool("skip-install", false, "Skip automatic download of missing binaries")
+	noChromeRestart := flag.Bool("no-chrome-restart", false, "Do not automatically restart Chrome with DevTools Protocol")
 	flag.Parse()
 
 	if *dataDir == "" {
@@ -54,15 +54,13 @@ func main() {
 	bridgeToken := loadOrGenerateToken(filepath.Join(*dataDir, "bridge_token"))
 
 	config = Config{
-		PinchTabPort:  *ptPort,
-		HealthPort:    *healthPort,
-		WhisperPort:   *whisperPort,
-		LlamafilePort: *llamaPort,
-		BridgeToken:   bridgeToken,
-		DataDir:       *dataDir,
+		PinchTabPort: *ptPort,
+		HealthPort:   *healthPort,
+		BridgeToken:  bridgeToken,
+		DataDir:      *dataDir,
 	}
 
-	fmt.Println("=== Voice Commander Companion ===")
+	fmt.Println("=== Zahhak Companion ===")
 	fmt.Printf("Platform:     %s/%s\n", runtime.GOOS, runtime.GOARCH)
 	fmt.Printf("Data dir:     %s\n", config.DataDir)
 	fmt.Printf("Health API:   http://localhost:%d/health\n", config.HealthPort)
@@ -70,8 +68,18 @@ func main() {
 	fmt.Printf("Bridge Token: %s...\n", config.BridgeToken[:8])
 	fmt.Println()
 
+	// Step 1: Detect hardware
+	hwInfo = DetectHardware()
+	modelRec = RecommendModel(hwInfo)
+	fmt.Printf("CPU:          %s (%d cores)\n", hwInfo.CPUName, hwInfo.CPUCores)
+	fmt.Printf("RAM:          %d MB\n", hwInfo.RAMTotalMB)
+	fmt.Printf("GPU:          %s (%d MB VRAM)\n", hwInfo.GPUName, hwInfo.VRAMMB)
+	fmt.Printf("Recommended:  %s (%s)\n", modelRec.ModelTag, modelRec.Reason)
+	fmt.Println()
+
 	services = NewServiceManager(config)
 
+	// Step 2: Install PinchTab if missing
 	if !*skipInstall {
 		if err := autoInstall(config.DataDir); err != nil {
 			log.Fatalf("Auto-install failed: %v", err)
@@ -79,29 +87,73 @@ func main() {
 		services.RefreshInstallStatus()
 	}
 
+	// Step 3: Set up Ollama (install if needed, ensure serving, pull model)
+	setupOllama(config.DataDir)
+
+	// Step 4: Set up Vosk STT (download model + auto-install Python package)
+	if !*skipInstall {
+		if err := EnsureVoskReady(config.DataDir); err != nil {
+			log.Printf("Warning: Vosk setup failed: %v", err)
+		}
+	}
+	InitVosk(config.DataDir)
+
+	// Step 5: Auto-detect or restart Chrome with CDP
+	if !*noChromeRestart {
+		cdpResult := EnsureChromeCDP()
+		if cdpResult.CDPURL != "" {
+			config.CDPURL = cdpResult.CDPURL
+			services.SetCDPURL(cdpResult.CDPURL)
+			fmt.Printf("CDP URL:      %s\n", config.CDPURL)
+		}
+		if cdpResult.Method == "fallback" {
+			fmt.Println("Note: PinchTab will use its own browser window.")
+		}
+		fmt.Println()
+	}
+
+	// Step 6: Start PinchTab
 	if err := services.StartPinchTab(); err != nil {
 		log.Printf("Error: Could not start PinchTab: %v", err)
 		log.Println("Try re-running the companion app or check your network connection.")
 	}
 
-	if err := services.StartWhisper(); err != nil {
-		log.Printf("Warning: Could not start Whisper: %v", err)
-	}
-	if err := services.StartLlamafile(); err != nil {
-		log.Printf("Warning: Could not start Llamafile: %v", err)
-	}
-
+	// Step 7: Start health server
 	go startHealthServer()
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	fmt.Println("Voice Commander is running. Press Ctrl+C to stop.")
+	fmt.Println("Zahhak Companion is running. Press Ctrl+C to stop.")
 	<-sigChan
 
 	fmt.Println("\nShutting down...")
 	services.StopAll()
 	fmt.Println("Goodbye!")
+}
+
+// setupOllama handles Ollama installation, startup, and model pulling.
+func setupOllama(dataDir string) {
+	if !IsOllamaInstalled() {
+		fmt.Println("[Ollama] Not installed — attempting installation...")
+		if err := InstallOllama(dataDir); err != nil {
+			log.Printf("Warning: Ollama installation failed: %v", err)
+			log.Println("  Install Ollama manually from https://ollama.com")
+			return
+		}
+	}
+
+	fmt.Println("[Ollama] Ensuring server is running...")
+	if err := EnsureOllamaServing(); err != nil {
+		log.Printf("Warning: Could not start Ollama: %v", err)
+		return
+	}
+
+	// Pull recommended model
+	fmt.Printf("[Ollama] Checking model %s...\n", modelRec.ModelTag)
+	if err := PullModel(modelRec.ModelTag); err != nil {
+		log.Printf("Warning: Could not pull model %s: %v", modelRec.ModelTag, err)
+	}
 }
 
 func startHealthServer() {
@@ -110,7 +162,7 @@ func startHealthServer() {
 	corsHandler := func(next http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 			if r.Method == "OPTIONS" {
 				w.WriteHeader(204)
@@ -122,7 +174,12 @@ func startHealthServer() {
 
 	mux.HandleFunc("/health", corsHandler(handleHealth))
 	mux.HandleFunc("/config", corsHandler(handleConfig))
+	mux.HandleFunc("/hardware", corsHandler(handleHardware))
+	mux.HandleFunc("/model/status", corsHandler(handleModelStatus))
 	mux.HandleFunc("/install-local", corsHandler(handleInstallLocal))
+	mux.HandleFunc("/stt", corsHandler(HandleSTT(config.DataDir)))
+	mux.HandleFunc("/finetune/start", corsHandler(HandleFinetuneStart()))
+	mux.HandleFunc("/finetune/status", corsHandler(HandleFinetuneStatus()))
 
 	addr := fmt.Sprintf(":%d", config.HealthPort)
 	log.Printf("Health server listening on %s", addr)
@@ -133,29 +190,37 @@ func startHealthServer() {
 
 // ServiceStatus is the per-service JSON payload returned by /health.
 type ServiceStatus struct {
-	Status string `json:"status"` // "running", "stopped", "error", "not_installed"
-	Port   int    `json:"port"`
+	Status string `json:"status"` // "running", "stopped", "error", "not_installed", "pulling"
+	Port   int    `json:"port,omitempty"`
 	Error  string `json:"error,omitempty"`
 }
 
 // HealthResponse is the response to GET /health
 type HealthResponse struct {
-	PinchTab    ServiceStatus `json:"pinchtab"`
-	Whisper     ServiceStatus `json:"whisper"`
-	Llamafile   ServiceStatus `json:"llamafile"`
-	BridgeToken string        `json:"bridgeToken"`
-	Platform    string        `json:"platform"`
-	Version     string        `json:"version"`
+	PinchTab    ServiceStatus        `json:"pinchtab"`
+	Ollama      ServiceStatus        `json:"ollama"`
+	Vosk        ServiceStatus        `json:"vosk"`
+	Hardware    *HardwareInfo        `json:"hardware,omitempty"`
+	ModelName   string               `json:"modelName,omitempty"`
+	ModelRec    *ModelRecommendation `json:"modelRecommendation,omitempty"`
+	BridgeToken string               `json:"bridgeToken"`
+	Platform    string               `json:"platform"`
+	Version     string               `json:"version"`
 }
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {
+	olStatus := GetOllamaStatus()
+
 	resp := HealthResponse{
 		PinchTab:    services.GetStatus("pinchtab"),
-		Whisper:     services.GetStatus("whisper"),
-		Llamafile:   services.GetStatus("llamafile"),
+		Ollama:      services.GetStatus("ollama"),
+		Vosk:        services.GetStatus("vosk"),
+		Hardware:    &hwInfo,
+		ModelName:   olStatus.ModelName,
+		ModelRec:    &modelRec,
 		BridgeToken: config.BridgeToken,
 		Platform:    runtime.GOOS + "/" + runtime.GOARCH,
-		Version:     "0.2.0",
+		Version:     "2.0.0",
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -167,7 +232,20 @@ func handleConfig(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(config)
 }
 
-// handleInstallLocal lets the extension trigger installation of missing binaries via HTTP
+func handleHardware(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"hardware":       hwInfo,
+		"recommendation": modelRec,
+	})
+}
+
+func handleModelStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(GetOllamaStatus())
+}
+
+// handleInstallLocal lets the extension trigger installation of missing components via HTTP
 func handleInstallLocal(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
@@ -177,18 +255,21 @@ func handleInstallLocal(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	go func() {
+		// Install PinchTab
 		if err := autoInstall(config.DataDir); err != nil {
 			log.Printf("Install failed: %v", err)
 			return
 		}
 		services.RefreshInstallStatus()
 
-		if err := services.StartWhisper(); err != nil {
-			log.Printf("Warning: Could not start Whisper after install: %v", err)
+		// Set up Ollama
+		setupOllama(config.DataDir)
+
+		// Set up Vosk (model + Python package)
+		if err := EnsureVoskReady(config.DataDir); err != nil {
+			log.Printf("Warning: Vosk setup failed: %v", err)
 		}
-		if err := services.StartLlamafile(); err != nil {
-			log.Printf("Warning: Could not start Llamafile after install: %v", err)
-		}
+		InitVosk(config.DataDir)
 	}()
 
 	json.NewEncoder(w).Encode(map[string]string{
@@ -197,7 +278,7 @@ func handleInstallLocal(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// autoInstall downloads any missing binaries (PinchTab, Whisperfile, Llamafile)
+// autoInstall downloads PinchTab if missing.
 func autoInstall(dataDir string) error {
 	binDir := filepath.Join(dataDir, "bin")
 	ext := ""
@@ -212,24 +293,6 @@ func autoInstall(dataDir string) error {
 			return fmt.Errorf("failed to install PinchTab: %w", err)
 		}
 		fmt.Println("PinchTab installed successfully!")
-	}
-
-	whisperPath := filepath.Join(binDir, "whisperfile"+ext)
-	if _, err := os.Stat(whisperPath); os.IsNotExist(err) {
-		fmt.Println("Whisperfile not found — downloading (~87MB)...")
-		if err := InstallWhisperfile(dataDir); err != nil {
-			return fmt.Errorf("failed to install Whisperfile: %w", err)
-		}
-		fmt.Println("Whisperfile installed successfully!")
-	}
-
-	llamaPath := filepath.Join(binDir, "llamafile"+ext)
-	if _, err := os.Stat(llamaPath); os.IsNotExist(err) {
-		fmt.Println("Llamafile not found — downloading (~2.4GB, this may take a while)...")
-		if err := InstallLlamafile(dataDir); err != nil {
-			return fmt.Errorf("failed to install Llamafile: %w", err)
-		}
-		fmt.Println("Llamafile installed successfully!")
 	}
 
 	fmt.Println("All required components are ready!")

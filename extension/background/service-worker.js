@@ -4,6 +4,8 @@ importScripts('../lib/jszip.min.js');
 let isActive = false;
 let useAI = false;
 let apiSettings = {};
+let activeMode = 'local'; // 'local' | 'thirdparty'
+let localModelName = ''; // populated from companion /health
 let capturedUrls = new Set();
 let captureQueue = [];
 let isProcessingQueue = false;
@@ -116,15 +118,15 @@ loadSettings();
 function loadSettings() {
   settingsReady = new Promise((resolve) => {
     chrome.storage.local.get(
-      ['isActive', 'useAI', 'provider', 'apiToken', 'customEndpoint', 'model'],
+      ['isActive', 'useAI', 'apiToken', 'model', 'activeMode', 'tpApiToken', 'tpModel'],
       (state) => {
         isActive = state.isActive || false;
         useAI = state.useAI || false;
+        activeMode = state.activeMode || 'local';
         apiSettings = {
-          provider: state.provider || 'openai',
-          apiToken: state.apiToken || '',
-          customEndpoint: state.customEndpoint || '',
-          model: state.model || '',
+          provider: activeMode === 'local' ? 'ollama' : 'openai',
+          apiToken: state.tpApiToken || state.apiToken || '',
+          model: state.tpModel || state.model || '',
         };
         updateBadge();
         resolve();
@@ -198,6 +200,25 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     case 'UPDATE_API_SETTINGS':
       apiSettings = msg.settings;
       break;
+
+    case 'SET_MODE':
+      activeMode = msg.mode;
+      apiSettings.provider = msg.mode === 'local' ? 'ollama' : 'openai';
+      chrome.storage.local.set({ activeMode: msg.mode });
+      break;
+
+    case 'FINETUNE_START':
+      handleFinetuneStart(msg)
+        .then(result => {})
+        .catch(err => console.error('[Finetune] Error:', err));
+      sendResponse({ started: true });
+      break;
+
+    case 'FINETUNE_STATUS':
+      handleFinetuneStatus()
+        .then(result => sendResponse(result))
+        .catch(err => sendResponse({ status: 'error', error: err.message }));
+      return true;
 
     case 'PAGE_CAPTURED':
       handlePageCapture(msg.data);
@@ -329,11 +350,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
               voiceCommanderState.bridgeToken = health.bridgeToken;
               await chrome.storage.local.set({ vcBridgeToken: health.bridgeToken });
             }
+            // Populate local model name from companion
+            if (health.modelName) {
+              localModelName = health.modelName;
+            }
             sendResponse({
               success: true,
               pinchtab: health.pinchtab?.status === 'running',
-              whisper: health.whisper?.status === 'running',
-              llamafile: health.llamafile?.status === 'running',
+              vosk: health.vosk?.status === 'running',
+              ollama: health.ollama?.status === 'running',
               tier: voiceCommanderState.tier,
             });
           } else {
@@ -341,8 +366,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             sendResponse({
               success: true,
               pinchtab: false,
-              whisper: false,
-              llamafile: false,
+              vosk: false,
+              ollama: false,
               tier: voiceCommanderState.tier,
             });
           }
@@ -716,98 +741,67 @@ function isOpenAIReasoningModel(model) {
 }
 
 async function callAIAPI(systemPrompt, userPrompt) {
-  const provider = apiSettings.provider;
-  let url, headers, body;
+  if (activeMode === 'local') {
+    return callLocalLLM(systemPrompt, userPrompt);
+  }
+  return callOpenAI(systemPrompt, userPrompt);
+}
 
-  switch (provider) {
-    case 'openai': {
-      const model = apiSettings.model || 'gpt-5-nano';
-      const isReasoning = isOpenAIReasoningModel(model);
-      url = 'https://api.openai.com/v1/chat/completions';
-      headers = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiSettings.apiToken}`,
-      };
-      body = {
-        model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-      };
-      if (isReasoning) {
-        // GPT-5 family & o-series: no temperature/top_p, use max_completion_tokens
-        body.max_completion_tokens = 4000;
-      } else {
-        // GPT-4o family: standard parameters
-        body.max_tokens = 4000;
-        body.temperature = 0.3;
-      }
-      break;
-    }
+async function callLocalLLM(systemPrompt, userPrompt) {
+  // Use Ollama's OpenAI-compatible endpoint
+  const model = localModelName || 'qwen3.5:4b';
+  const url = 'http://localhost:11434/v1/chat/completions';
+  const headers = { 'Content-Type': 'application/json' };
+  const body = {
+    model,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ],
+    max_tokens: 4000,
+    temperature: 0.3,
+  };
 
-    case 'anthropic': {
-      const model = apiSettings.model || 'claude-haiku-4-5-20251001';
-      url = 'https://api.anthropic.com/v1/messages';
-      headers = {
-        'Content-Type': 'application/json',
-        'x-api-key': apiSettings.apiToken,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      };
-      body = {
-        model,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userPrompt }],
-        max_tokens: 4000,
-        temperature: 0.3,
-      };
-      break;
-    }
+  console.log(`[BrowsingCapture] API call → local (Ollama) | model: ${model}`);
 
-    case 'ollama':
-      url = 'http://localhost:11434/api/chat';
-      headers = { 'Content-Type': 'application/json' };
-      body = {
-        model: apiSettings.model || 'llama3.2',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        stream: false,
-        options: { temperature: 0.3 },
-      };
-      break;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  });
 
-    case 'custom': {
-      const customModel = apiSettings.model || 'default';
-      const isReasoning = isOpenAIReasoningModel(customModel);
-      url = apiSettings.customEndpoint;
-      headers = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiSettings.apiToken}`,
-      };
-      body = {
-        model: customModel,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-      };
-      if (isReasoning) {
-        body.max_completion_tokens = 4000;
-      } else {
-        body.max_tokens = 4000;
-        body.temperature = 0.3;
-      }
-      break;
-    }
-
-    default:
-      throw new Error(`Unknown provider: ${provider}`);
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Local LLM error ${res.status}: ${errText}`);
   }
 
-  console.log(`[BrowsingCapture] API call → ${provider} | model: ${body.model} | reasoning: ${isOpenAIReasoningModel(body.model) ? 'yes' : 'no'}`);
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || '';
+}
+
+async function callOpenAI(systemPrompt, userPrompt) {
+  const model = apiSettings.model || 'gpt-5-nano';
+  const isReasoning = isOpenAIReasoningModel(model);
+  const url = 'https://api.openai.com/v1/chat/completions';
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${apiSettings.apiToken}`,
+  };
+  const body = {
+    model,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ],
+  };
+  if (isReasoning) {
+    body.max_completion_tokens = 4000;
+  } else {
+    body.max_tokens = 4000;
+    body.temperature = 0.3;
+  }
+
+  console.log(`[BrowsingCapture] API call → openai | model: ${model} | reasoning: ${isReasoning ? 'yes' : 'no'}`);
 
   const res = await fetch(url, {
     method: 'POST',
@@ -821,18 +815,7 @@ async function callAIAPI(systemPrompt, userPrompt) {
   }
 
   const data = await res.json();
-
-  switch (provider) {
-    case 'openai':
-    case 'custom':
-      return data.choices?.[0]?.message?.content || '';
-    case 'anthropic':
-      return data.content?.[0]?.text || '';
-    case 'ollama':
-      return data.message?.content || '';
-    default:
-      return '';
-  }
+  return data.choices?.[0]?.message?.content || '';
 }
 
 // Two-layer approach: fast regex patterns + optional LLM for context-aware detection.
@@ -2630,13 +2613,13 @@ async function processAudioLocal(audioBase64) {
 
   try {
     const audioBlob = base64ToBlob(audioBase64, 'audio/wav');
-    console.log('[VoiceCommander] Sending WAV to Whisperfile: base64 len =', audioBase64.length,
+    console.log('[VoiceCommander] Sending WAV to Vosk STT: base64 len =', audioBase64.length,
       ', blob size =', audioBlob.size, 'bytes');
     const formData = new FormData();
     formData.append('file', audioBlob, 'audio.wav');
-    formData.append('response_format', 'json');
 
-    const sttResp = await fetch('http://127.0.0.1:8081/inference', {
+    // Use companion's built-in Vosk STT endpoint
+    const sttResp = await fetch(`http://127.0.0.1:${voiceCommanderState.companionHealthPort}/stt`, {
       method: 'POST',
       body: formData,
     });
@@ -2648,7 +2631,7 @@ async function processAudioLocal(audioBase64) {
     }
 
     const sttResult = await sttResp.json();
-    const userText = (sttResult.text || sttResult.segments?.map(s => s.text).join(' ') || '').trim();
+    const userText = (sttResult.text || '').trim();
     console.log('[VoiceCommander] STT result:', JSON.stringify(sttResult).substring(0, 300));
     console.log('[VoiceCommander] Transcribed text:', userText);
 
@@ -2673,7 +2656,7 @@ async function processAudioLocal(audioBase64) {
       console.warn('[VoiceCommander] Failed to get page context:', e.message);
     }
 
-    // Step 3: LLM via local llamafile (OpenAI-compatible format)
+    // Step 3: LLM via Ollama (OpenAI-compatible format)
     const systemPrompt = getVCSystemPrompt(pageContext) +
       '\n\nIMPORTANT: When you want to use a tool, respond ONLY with the JSON object: {"tool": "tool_name", "args": {...}}. ' +
       'Do NOT wrap it in code blocks or add any text before or after the JSON. ' +
@@ -2695,11 +2678,11 @@ async function processAudioLocal(audioBase64) {
       try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 120000); // 2 min timeout
-        chatResp = await fetch('http://127.0.0.1:8080/v1/chat/completions', {
+        chatResp = await fetch('http://localhost:11434/v1/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            model: 'local',
+            model: localModelName || 'qwen3.5:4b',
             messages,
             max_tokens: 150,
             temperature: 0.2,
@@ -2709,8 +2692,8 @@ async function processAudioLocal(audioBase64) {
         clearTimeout(timeout);
       } catch (fetchErr) {
         const msg = fetchErr.name === 'AbortError'
-          ? 'Llamafile took too long (>2 min). It may be running on CPU only — restart companion to try GPU.'
-          : 'Llamafile not reachable on port 8080 — it may have crashed. Check companion terminal.';
+          ? 'Ollama took too long (>2 min). Check companion terminal for GPU issues.'
+          : 'Ollama not reachable on port 11434 — is it running? Check companion terminal.';
         console.error('[VoiceCommander] LLM fetch error:', fetchErr.message);
         throw new Error(msg);
       }
@@ -2813,11 +2796,11 @@ function extractToolCallJSON(text) {
 
 
 async function getRealtimeEphemeralToken() {
-  // Use the existing OpenAI API key from settings
-  const settings = await chrome.storage.local.get(['apiToken', 'provider']);
-  const apiKey = settings.apiToken;
-  if (!apiKey || settings.provider !== 'openai') {
-    throw new Error('OpenAI API key not configured. Set it in API Configuration.');
+  // Use the Third Party OpenAI API key
+  const settings = await chrome.storage.local.get(['tpApiToken', 'apiToken']);
+  const apiKey = settings.tpApiToken || settings.apiToken;
+  if (!apiKey) {
+    throw new Error('OpenAI API key not configured. Set it in the Third Party tab.');
   }
 
   const resp = await fetch('https://api.openai.com/v1/realtime/sessions', {
@@ -3003,5 +2986,44 @@ async function pushToHuggingFace(token, username, repoId, isNew, isPrivate) {
       result: { success: false, error: err.message },
     };
     broadcastHFProgress();
+  }
+}
+
+
+// ── Fine-tuning via companion → HuggingFace AutoTrain ──
+
+async function handleFinetuneStart(msg) {
+  const { hfToken, datasetRepoId, baseModel } = msg;
+  if (!hfToken || !datasetRepoId) {
+    throw new Error('Missing HuggingFace token or dataset repo ID');
+  }
+
+  const resp = await fetch(`http://localhost:${voiceCommanderState.companionHealthPort}/finetune/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      hfToken,
+      datasetRepoId,
+      baseModel: baseModel || localModelName || 'qwen3.5:4b',
+    }),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw new Error(`Fine-tune start failed: ${resp.status} ${text}`);
+  }
+
+  return resp.json();
+}
+
+async function handleFinetuneStatus() {
+  try {
+    const resp = await fetch(`http://localhost:${voiceCommanderState.companionHealthPort}/finetune/status`);
+    if (!resp.ok) {
+      return { status: 'error', error: `HTTP ${resp.status}` };
+    }
+    return resp.json();
+  } catch (e) {
+    return { status: 'unavailable', error: 'Companion not connected' };
   }
 }

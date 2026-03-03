@@ -1,3 +1,3 @@
-module voice-commander-companion
+module zahhak-companion
 
 go 1.21

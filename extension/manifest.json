@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Zahhak Crawler",
-  "version": "0.2.0",
+  "version": "2.0.0",
   "description": "AI-powered web scraping, voice-controlled browser automation, and browsing capture for training data",
 
   "permissions": [

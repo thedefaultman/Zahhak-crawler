@@ -1,17 +1,11 @@
+// --- DOM references ---
 const activateToggle = document.getElementById('activate-toggle');
 const captureStatus = document.getElementById('capture-status');
 const captureCount = document.getElementById('capture-count');
 const sessionTime = document.getElementById('session-time');
 const totalWords = document.getElementById('total-words');
-const providerSelect = document.getElementById('provider-select');
-const apiToken = document.getElementById('api-token');
-const toggleTokenBtn = document.getElementById('toggle-token-visibility');
-const customEndpointField = document.getElementById('custom-endpoint-field');
-const customEndpoint = document.getElementById('custom-endpoint');
-const modelField = document.getElementById('model-field');
-const modelSelect = document.getElementById('model-select');
-const saveApiBtn = document.getElementById('save-api');
 const aiToggle = document.getElementById('ai-toggle');
+const aiEnhanceSublabel = document.getElementById('ai-enhance-sublabel');
 const exportZipBtn = document.getElementById('export-zip');
 const exportFolderBtn = document.getElementById('export-folder');
 const exportFolderInput = document.getElementById('export-folder-name');
@@ -20,6 +14,40 @@ const sanitizeSelect = document.getElementById('sanitize-select');
 const recentList = document.getElementById('recent-list');
 const toast = document.getElementById('toast');
 
+// Tab buttons
+const tabBtnLocal = document.getElementById('tab-btn-local');
+const tabBtnThirdparty = document.getElementById('tab-btn-thirdparty');
+const tabLocal = document.getElementById('tab-local');
+const tabThirdparty = document.getElementById('tab-thirdparty');
+
+// Companion panel (Local tab)
+const companionHeader = document.getElementById('companion-header');
+const companionBody = document.getElementById('companion-body');
+const companionDot = document.getElementById('companion-dot');
+const companionConnectionText = document.getElementById('companion-connection-text');
+const companionServices = document.getElementById('companion-services');
+const compIndOllama = document.getElementById('comp-ind-ollama');
+const compIndVosk = document.getElementById('comp-ind-vosk');
+const compIndPinchtab = document.getElementById('comp-ind-pinchtab');
+const companionHardware = document.getElementById('companion-hardware');
+const hwGpu = document.getElementById('hw-gpu');
+const hwVram = document.getElementById('hw-vram');
+const hwRam = document.getElementById('hw-ram');
+const hwModel = document.getElementById('hw-model');
+const companionDownload = document.getElementById('companion-download');
+const companionDlBtn = document.getElementById('companion-dl-btn');
+const companionDlLabel = document.getElementById('companion-dl-label');
+const companionCheckBtn = document.getElementById('companion-check');
+
+// Third Party API config
+const tpApiToken = document.getElementById('tp-api-token');
+const tpToggleToken = document.getElementById('tp-toggle-token');
+const tpModelSelect = document.getElementById('tp-model-select');
+const tpSaveApiBtn = document.getElementById('tp-save-api');
+const tpApiHeader = document.getElementById('tp-api-header');
+const tpApiBody = document.getElementById('tp-api-body');
+
+// Crawl
 const crawlHeader = document.getElementById('crawl-header');
 const crawlBody = document.getElementById('crawl-body');
 const crawlUrlInput = document.getElementById('crawl-url');
@@ -34,9 +62,7 @@ const crawlDomain = document.getElementById('crawl-domain');
 const crawlPagesCount = document.getElementById('crawl-pages-count');
 const crawlQueueCount = document.getElementById('crawl-queue-count');
 
-const enhanceStatusDiv = document.getElementById('enhance-status');
-const enhanceStatusText = document.getElementById('enhance-status-text');
-
+// HuggingFace
 const hfHeader = document.getElementById('hf-header');
 const hfBody = document.getElementById('hf-body');
 const hfTokenInput = document.getElementById('hf-token');
@@ -60,6 +86,16 @@ const hfLinksDiv = document.getElementById('hf-links');
 const hfLinkDataset = document.getElementById('hf-link-dataset');
 const hfLinkAutotrain = document.getElementById('hf-link-autotrain');
 
+// Fine-tune
+const hfFinetuneSection = document.getElementById('hf-finetune-section');
+const hfFinetuneBtn = document.getElementById('hf-finetune-btn');
+const ftBaseModel = document.getElementById('ft-base-model');
+const ftDataset = document.getElementById('ft-dataset');
+const hfFinetuneProgress = document.getElementById('hf-finetune-progress');
+const hfFinetuneBar = document.getElementById('hf-finetune-bar');
+const hfFinetuneStatus = document.getElementById('hf-finetune-status');
+
+// Dataset Builder
 const dsHeader = document.getElementById('ds-header');
 const dsBody = document.getElementById('ds-body');
 const dsPrompt = document.getElementById('ds-prompt');
@@ -87,19 +123,15 @@ const dsStatScored = document.getElementById('ds-stat-scored');
 const dsStatGold = document.getElementById('ds-stat-gold');
 const dsStatSilver = document.getElementById('ds-stat-silver');
 
+// Voice Commander
 const vcHeader = document.getElementById('vc-header');
 const vcBody = document.getElementById('vc-body');
-const vcTierSelect = document.getElementById('vc-tier');
 const vcOpenaiNotice = document.getElementById('vc-openai-notice');
-const vcSaveSettingsBtn = document.getElementById('vc-save-settings');
 const vcStatusBar = document.getElementById('vc-status-bar');
 const vcIndPinchtab = document.getElementById('vc-ind-pinchtab');
 const vcIndStt = document.getElementById('vc-ind-stt');
 const vcIndLlm = document.getElementById('vc-ind-llm');
 const vcDownloadBanner = document.getElementById('vc-download-banner');
-const vcDlRecommended = document.getElementById('vc-dl-recommended');
-const vcDlRecommendedLabel = document.getElementById('vc-dl-recommended-label');
-const vcCheckCompanion = document.getElementById('vc-check-companion');
 const vcMicContainer = document.getElementById('vc-mic-container');
 const vcMicBtn = document.getElementById('vc-mic-btn');
 const vcMicLabel = document.getElementById('vc-mic-label');
@@ -108,6 +140,7 @@ const vcTranscript = document.getElementById('vc-transcript');
 
 let vcListening = false;
 
+// Settings
 const excludedUrls = document.getElementById('excluded-urls');
 const minWords = document.getElementById('min-words');
 const spaDetection = document.getElementById('spa-detection');
@@ -118,25 +151,30 @@ const aiDelay = document.getElementById('ai-delay');
 const saveSettingsBtn = document.getElementById('save-settings');
 const clearDataBtn = document.getElementById('clear-data');
 
-const apiHeader = document.getElementById('api-header');
-const apiBody = document.getElementById('api-body');
 const settingsHeader = document.getElementById('settings-header');
 const settingsBody = document.getElementById('settings-body');
 const recentHeader = document.getElementById('recent-header');
 const recentBody = document.getElementById('recent-body');
 
+const enhanceStatusDiv = document.getElementById('enhance-status');
+const enhanceStatusText = document.getElementById('enhance-status-text');
+
 let sessionTimer = null;
 let sessionStartTime = null;
+let activeMode = 'local'; // 'local' | 'thirdparty'
+let companionPollTimer = null;
+let companionData = null; // latest companion /health response
 
 const ALL_KEYS = [
-  'isActive', 'useAI', 'provider', 'apiToken', 'customEndpoint',
-  'model', 'captureCount', 'totalWords', 'sessionStart', 'recentCaptures',
+  'isActive', 'useAI', 'apiToken', 'model',
+  'captureCount', 'totalWords', 'sessionStart', 'recentCaptures',
   'exportFolder', 'aiQuestions',
   'excludedUrls', 'minWords', 'captureImages', 'captureLinks',
   'spaDetection', 'maxTokens', 'aiDelay', 'sanitizeMode',
   'huggingfaceToken', 'hfUsername', 'hfDatasetMode', 'hfDatasetRepo', 'hfPrivate',
   'braveApiKey',
-  'vcTier', 'vcBridgeToken'
+  'vcBridgeToken', 'activeMode',
+  'tpApiToken', 'tpModel',
 ];
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -147,14 +185,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function loadState() {
   const state = await chrome.storage.local.get(ALL_KEYS);
 
+  // Tab mode
+  activeMode = state.activeMode || 'local';
+  switchTab(activeMode, false); // don't persist, just apply UI
+
   activateToggle.checked = state.isActive || false;
   aiToggle.checked = state.useAI || false;
 
-  providerSelect.value = state.provider || 'openai';
-  apiToken.value = state.apiToken || '';
-  customEndpoint.value = state.customEndpoint || '';
-  // Store saved model before updateProviderFields populates the dropdown
-  modelSelect.dataset.savedModel = state.model || '';
+  // Third Party API config
+  tpApiToken.value = state.tpApiToken || state.apiToken || '';
+  if (state.tpModel) tpModelSelect.value = state.tpModel;
 
   exportFolderInput.value = state.exportFolder || 'BrowsingCapture';
   aiQuestionsCheckbox.checked = state.aiQuestions || false;
@@ -178,7 +218,6 @@ async function loadState() {
     hfModeNew.checked = true;
   }
   hfNewName.value = state.hfDatasetRepo || '';
-  // If token was previously validated, show connected state
   if (state.huggingfaceToken && state.hfUsername) {
     hfTokenStatus.textContent = `Connected as @${state.hfUsername}`;
     hfTokenStatus.className = 'hf-token-status valid';
@@ -194,11 +233,7 @@ async function loadState() {
     dsBraveBanner.classList.add('hidden');
   }
 
-  if (state.vcTier) vcTierSelect.value = state.vcTier;
-  updateVCTierFields();
-
   updateCaptureStatusUI(state.isActive || false);
-  updateProviderFields();
 
   if (state.isActive && state.sessionStart) {
     sessionStartTime = state.sessionStart;
@@ -208,9 +243,18 @@ async function loadState() {
   captureCount.textContent = state.captureCount || 0;
   totalWords.textContent = formatNumber(state.totalWords || 0);
   renderRecentCaptures(state.recentCaptures || []);
+
+  // Start companion polling
+  pollCompanion();
+  companionPollTimer = setInterval(pollCompanion, 5000);
 }
 
 function setupEventListeners() {
+  // --- Tab switching ---
+  tabBtnLocal.addEventListener('click', () => switchTab('local'));
+  tabBtnThirdparty.addEventListener('click', () => switchTab('thirdparty'));
+
+  // --- Capture ---
   activateToggle.addEventListener('change', async () => {
     const isActive = activateToggle.checked;
     const now = Date.now();
@@ -237,39 +281,43 @@ function setupEventListeners() {
     chrome.runtime.sendMessage({ type: 'TOGGLE_CAPTURE', isActive });
   });
 
-  providerSelect.addEventListener('change', () => {
-    updateProviderFields();
-    chrome.storage.local.set({ provider: providerSelect.value });
-  });
-
-  toggleTokenBtn.addEventListener('click', () => {
-    apiToken.type = apiToken.type === 'password' ? 'text' : 'password';
-  });
-
-  saveApiBtn.addEventListener('click', async () => {
-    const settings = {
-      provider: providerSelect.value,
-      apiToken: apiToken.value.trim(),
-      customEndpoint: customEndpoint.value.trim(),
-      model: modelSelect.value
-    };
-
-    if (!settings.apiToken && settings.provider !== 'ollama') {
-      showToast('Please enter an API token', 'error');
-      return;
-    }
-
-    await chrome.storage.local.set(settings);
-    chrome.runtime.sendMessage({ type: 'UPDATE_API_SETTINGS', settings });
-    showToast('API settings saved!', 'success');
-  });
-
+  // --- AI Enhancement ---
   aiToggle.addEventListener('change', async () => {
     const useAI = aiToggle.checked;
     await chrome.storage.local.set({ useAI });
     chrome.runtime.sendMessage({ type: 'TOGGLE_AI', useAI });
   });
 
+  // --- Third Party API Config ---
+  tpToggleToken.addEventListener('click', () => {
+    tpApiToken.type = tpApiToken.type === 'password' ? 'text' : 'password';
+  });
+
+  tpSaveApiBtn.addEventListener('click', async () => {
+    const token = tpApiToken.value.trim();
+    const model = tpModelSelect.value;
+
+    if (!token) {
+      showToast('Please enter an OpenAI API token', 'error');
+      return;
+    }
+
+    await chrome.storage.local.set({
+      tpApiToken: token,
+      tpModel: model,
+      apiToken: token,
+      model: model,
+    });
+    chrome.runtime.sendMessage({
+      type: 'UPDATE_API_SETTINGS',
+      settings: { provider: 'openai', apiToken: token, model }
+    });
+    showToast('OpenAI settings saved!', 'success');
+  });
+
+  tpApiHeader.addEventListener('click', () => toggleSection(tpApiHeader, tpApiBody));
+
+  // --- Export ---
   exportFolderInput.addEventListener('change', async () => {
     const folder = exportFolderInput.value.trim() || 'BrowsingCapture';
     exportFolderInput.value = folder;
@@ -292,6 +340,7 @@ function setupEventListeners() {
     await doExport(exportFolderBtn, 'folder');
   });
 
+  // --- Settings ---
   saveSettingsBtn.addEventListener('click', async () => {
     const urls = excludedUrls.value.split('\n').map(l => l.trim()).filter(Boolean);
 
@@ -323,12 +372,14 @@ function setupEventListeners() {
     }
   });
 
-  apiHeader.addEventListener('click', () => toggleSection(apiHeader, apiBody));
+  // --- Section toggles ---
+  companionHeader.addEventListener('click', () => toggleSection(companionHeader, companionBody));
   crawlHeader.addEventListener('click', () => toggleSection(crawlHeader, crawlBody));
   hfHeader.addEventListener('click', () => toggleSection(hfHeader, hfBody));
   settingsHeader.addEventListener('click', () => toggleSection(settingsHeader, settingsBody));
   recentHeader.addEventListener('click', () => toggleSection(recentHeader, recentBody));
 
+  // --- HuggingFace ---
   hfToggleTokenBtn.addEventListener('click', () => {
     hfTokenInput.type = hfTokenInput.type === 'password' ? 'text' : 'password';
   });
@@ -361,11 +412,14 @@ function setupEventListeners() {
       }
       fetchHFDatasets(token, result.username);
       showToast(`Connected as @${result.username}`, 'success');
+      // Show fine-tune section if in local mode
+      updateFineTuneVisibility();
     } else {
       hfTokenStatus.textContent = result?.error || 'Invalid token';
       hfTokenStatus.className = 'hf-token-status invalid';
       hfDatasetSection.style.display = 'none';
       hfPushBtn.style.display = 'none';
+      hfFinetuneSection.classList.add('hidden');
       await chrome.storage.local.set({ huggingfaceToken: '', hfUsername: '' });
     }
   });
@@ -432,7 +486,37 @@ function setupEventListeners() {
     updateHFProgressUI({ active: true, phase: 'preparing', current: 0, total: 0, currentFile: '' });
   });
 
+  // --- Fine-tune button ---
+  if (hfFinetuneBtn) {
+    hfFinetuneBtn.addEventListener('click', async () => {
+      const state = await chrome.storage.local.get(['huggingfaceToken', 'hfUsername', 'hfDatasetRepo']);
+      if (!state.huggingfaceToken) {
+        showToast('Please validate your HuggingFace token first', 'error');
+        return;
+      }
+      const repoId = hfModeNew.checked ? hfNewName.value.trim() : hfExistingSelect.value;
+      if (!repoId) {
+        showToast('Please specify a dataset first', 'error');
+        return;
+      }
+      const baseModel = companionData?.installedModel || 'qwen3.5:4b';
 
+      hfFinetuneBtn.disabled = true;
+      hfFinetuneProgress.classList.remove('hidden');
+      hfFinetuneStatus.textContent = 'Starting fine-tune job...';
+      hfFinetuneBar.style.width = '0%';
+
+      chrome.runtime.sendMessage({
+        type: 'FINETUNE_START',
+        token: state.huggingfaceToken,
+        username: state.hfUsername,
+        repoId: `${state.hfUsername}/${repoId}`,
+        baseModel,
+      });
+    });
+  }
+
+  // --- Crawl ---
   crawlUseCurrentBtn.addEventListener('click', async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab && tab.url) {
@@ -448,7 +532,7 @@ function setupEventListeners() {
     }
 
     try {
-      new URL(url); // validate
+      new URL(url);
     } catch (e) {
       showToast('Invalid URL', 'error');
       return;
@@ -497,6 +581,7 @@ function setupEventListeners() {
     }
   });
 
+  // --- Dataset Builder ---
   dsHeader.addEventListener('click', () => toggleSection(dsHeader, dsBody));
 
   dsConfigToggle.addEventListener('click', () => {
@@ -598,6 +683,7 @@ function setupEventListeners() {
     if (response) updateHFProgressUI(response);
   });
 
+  // --- Message listener ---
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg.type === 'CAPTURE_COMPLETE') {
       updateAfterCapture(msg.data);
@@ -630,19 +716,13 @@ function setupEventListeners() {
       vcMicLabel.textContent = 'Click to enable mic';
       vcPttHint.classList.add('hidden');
     }
+    if (msg.type === 'FINETUNE_STATUS') {
+      updateFinetuneStatusUI(msg);
+    }
   });
 
+  // --- Voice Commander ---
   vcHeader.addEventListener('click', () => toggleSection(vcHeader, vcBody));
-
-  vcTierSelect.addEventListener('change', updateVCTierFields);
-
-  vcSaveSettingsBtn.addEventListener('click', async () => {
-    const settings = {
-      tier: vcTierSelect.value,
-    };
-    await chrome.runtime.sendMessage({ type: 'VC_SAVE_SETTINGS', ...settings });
-    showToast('Voice settings saved!', 'success');
-  });
 
   vcMicBtn.addEventListener('click', () => {
     if (vcListening) {
@@ -669,31 +749,280 @@ function setupEventListeners() {
     }
   });
 
+  // --- Companion download ---
   setupCompanionDownloadLinks();
 
-  if (vcCheckCompanion) {
-    vcCheckCompanion.addEventListener('click', async () => {
-      vcCheckCompanion.textContent = 'Checking...';
-      vcCheckCompanion.disabled = true;
-      try {
-        const resp = await fetch('http://localhost:9868/health', { signal: AbortSignal.timeout(3000) });
-        if (resp.ok) {
-          const data = await resp.json();
-          showToast('Companion app connected!', 'success');
-          chrome.runtime.sendMessage({ type: 'VC_INIT' }, (r) => {
-            if (r) updateVCServiceIndicators(r);
-          });
-        } else {
-          showToast('Companion app responded but with an error', 'error');
-        }
-      } catch (e) {
-        showToast('Could not reach companion app. Is it running?', 'error');
-      }
-      vcCheckCompanion.textContent = 'Check Connection';
-      vcCheckCompanion.disabled = false;
-    });
+  companionCheckBtn.addEventListener('click', async () => {
+    companionCheckBtn.textContent = 'Checking...';
+    companionCheckBtn.disabled = true;
+    await pollCompanion();
+    companionCheckBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Check Connection';
+    companionCheckBtn.disabled = false;
+  });
+}
+
+// ===== TAB SWITCHING =====
+
+function switchTab(mode, persist = true) {
+  activeMode = mode;
+
+  // Update tab button active states
+  tabBtnLocal.classList.toggle('active', mode === 'local');
+  tabBtnThirdparty.classList.toggle('active', mode === 'thirdparty');
+
+  // Show/hide tab content
+  tabLocal.classList.toggle('hidden', mode !== 'local');
+  tabThirdparty.classList.toggle('hidden', mode !== 'thirdparty');
+
+  // Update Voice Commander mode-specific elements
+  vcOpenaiNotice.classList.toggle('hidden', mode !== 'thirdparty');
+  if (mode === 'thirdparty') {
+    vcIndStt.innerHTML = '<span class="vc-dot"></span>Realtime';
+    vcIndLlm.classList.add('hidden');
+  } else {
+    vcIndStt.innerHTML = '<span class="vc-dot"></span>STT';
+    vcIndLlm.classList.remove('hidden');
+  }
+
+  // Update AI enhancement sublabel
+  aiEnhanceSublabel.textContent = mode === 'local'
+    ? 'Use local Qwen model to improve markdown quality'
+    : 'Use OpenAI to improve markdown quality';
+
+  // Show/hide fine-tune section
+  updateFineTuneVisibility();
+
+  // Persist and notify service worker
+  if (persist) {
+    chrome.storage.local.set({ activeMode: mode });
+    chrome.runtime.sendMessage({ type: 'SET_MODE', mode });
   }
 }
+
+function updateFineTuneVisibility() {
+  chrome.storage.local.get(['huggingfaceToken', 'hfUsername'], (state) => {
+    const showFinetune = activeMode === 'local' && state.huggingfaceToken && state.hfUsername;
+    hfFinetuneSection.classList.toggle('hidden', !showFinetune);
+    if (showFinetune && companionData?.installedModel) {
+      ftBaseModel.textContent = companionData.installedModel;
+    }
+    const repoName = hfModeNew.checked ? hfNewName.value : hfExistingSelect.value;
+    ftDataset.textContent = repoName || '—';
+  });
+}
+
+// ===== COMPANION POLLING =====
+
+async function pollCompanion() {
+  try {
+    const resp = await fetch('http://localhost:9868/health', { signal: AbortSignal.timeout(3000) });
+    if (!resp.ok) throw new Error('Bad response');
+    const data = await resp.json();
+    companionData = data;
+    updateCompanionUI(data);
+
+    // Also update VC indicators
+    chrome.runtime.sendMessage({ type: 'VC_INIT' }, (r) => {
+      if (r) updateVCServiceIndicators(r);
+    });
+  } catch (e) {
+    companionData = null;
+    updateCompanionUI(null);
+  }
+}
+
+function updateCompanionUI(data) {
+  if (data) {
+    companionDot.className = 'companion-dot connected';
+    companionConnectionText.textContent = 'Connected';
+    companionConnectionText.style.color = '#BDD164';
+    companionDownload.classList.add('hidden');
+
+    // Service indicators
+    const ollamaOk = data.ollama?.status === 'running';
+    const voskOk = data.vosk?.status === 'running';
+    const ptOk = data.pinchtab?.status === 'running';
+
+    compIndOllama.classList.toggle('connected', ollamaOk);
+    compIndVosk.classList.toggle('connected', voskOk);
+    compIndPinchtab.classList.toggle('connected', ptOk);
+
+    // Hardware info
+    if (data.hardware) {
+      companionHardware.classList.remove('hidden');
+      hwGpu.textContent = data.hardware.gpuName || 'No dedicated GPU';
+      hwVram.textContent = data.hardware.gpuVramMB ? `${data.hardware.gpuVramMB} MB` : '—';
+      hwRam.textContent = data.hardware.totalRamGB ? `${data.hardware.totalRamGB.toFixed(1)} GB` : '—';
+    }
+    hwModel.textContent = data.installedModel || '—';
+
+    // Update fine-tune base model
+    if (data.installedModel) {
+      ftBaseModel.textContent = data.installedModel;
+    }
+  } else {
+    companionDot.className = 'companion-dot disconnected';
+    companionConnectionText.textContent = 'Not connected';
+    companionConnectionText.style.color = '#FF9153';
+    companionDownload.classList.remove('hidden');
+    companionHardware.classList.add('hidden');
+
+    compIndOllama.classList.remove('connected');
+    compIndVosk.classList.remove('connected');
+    compIndPinchtab.classList.remove('connected');
+  }
+}
+
+// ===== VOICE COMMANDER =====
+
+function updateVCServiceIndicators(data) {
+  if (data.pinchtab) {
+    vcIndPinchtab.classList.add('connected');
+    vcDownloadBanner.classList.add('hidden');
+    vcMicContainer.classList.remove('hidden');
+  } else {
+    vcIndPinchtab.classList.remove('connected');
+    vcDownloadBanner.classList.remove('hidden');
+    vcMicContainer.classList.add('hidden');
+  }
+
+  if (activeMode === 'local') {
+    vcIndStt.classList.toggle('connected', !!data.vosk);
+    vcIndLlm.classList.toggle('connected', !!data.ollama);
+  } else {
+    vcIndStt.classList.toggle('connected', true);
+  }
+}
+
+function updateVCStatusUI(data) {
+  if (data.listening) {
+    vcMicBtn.classList.add('listening');
+    vcMicBtn.classList.remove('processing');
+    vcMicLabel.textContent = 'Mic active — click to stop';
+    vcPttHint.classList.remove('hidden');
+  } else if (data.processing) {
+    vcMicBtn.classList.remove('listening');
+    vcMicBtn.classList.add('processing');
+    vcMicLabel.textContent = 'Processing...';
+    vcPttHint.classList.add('hidden');
+  } else {
+    vcMicBtn.classList.remove('listening', 'processing');
+    vcMicLabel.textContent = 'Click to enable mic';
+    vcPttHint.classList.add('hidden');
+  }
+}
+
+function appendVCTranscript(entry) {
+  vcTranscript.classList.remove('hidden');
+
+  const div = document.createElement('div');
+  div.className = `vc-msg ${entry.role}`;
+
+  let text = entry.text || '';
+  if (entry.action) {
+    text = `[${entry.action}] ${text}`;
+  }
+
+  const time = new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  div.innerHTML = `${escapeHtml(text)}<span class="vc-msg-time">${time}</span>`;
+
+  vcTranscript.appendChild(div);
+  vcTranscript.scrollTop = vcTranscript.scrollHeight;
+}
+
+async function startVCListening() {
+  // Determine tier from active tab
+  const tier = activeMode === 'local' ? 'local' : 'openai_realtime';
+
+  try {
+    vcMicBtn.classList.add('listening');
+    vcMicLabel.textContent = 'Starting mic...';
+
+    const result = await chrome.runtime.sendMessage({ type: 'VC_REQUEST_MIC', tier });
+    if (result && result.success === false) {
+      throw new Error(result.error || 'Failed to start mic capture');
+    }
+
+    vcListening = true;
+    vcMicLabel.textContent = 'Mic active — click to stop';
+
+    // Show PTT hint for local mode only (OpenAI Realtime uses server VAD)
+    if (tier === 'openai_realtime') {
+      vcPttHint.classList.add('hidden');
+    } else {
+      vcPttHint.classList.remove('hidden');
+    }
+
+    chrome.runtime.sendMessage({ type: 'VC_START_LISTENING', tier });
+  } catch (err) {
+    vcMicBtn.classList.remove('listening', 'processing');
+    vcMicLabel.textContent = 'Click to enable mic';
+    vcPttHint.classList.add('hidden');
+    showToast('Mic error: ' + err.message, 'error');
+  }
+}
+
+function stopVCListening() {
+  vcListening = false;
+
+  chrome.runtime.sendMessage({ type: 'VC_STOP_MIC' });
+
+  vcMicBtn.classList.remove('listening', 'processing');
+  vcMicLabel.textContent = 'Click to enable mic';
+  vcPttHint.classList.add('hidden');
+
+  chrome.runtime.sendMessage({ type: 'VC_STOP_LISTENING' });
+}
+
+// ===== COMPANION DOWNLOAD =====
+
+const COMPANION_REPO = 'thedefaultman/Zahhak-crawler';
+const COMPANION_TAG = 'latest';
+
+function getCompanionDownloadURL() {
+  return `https://github.com/${COMPANION_REPO}/releases/${COMPANION_TAG}/download/zahhak-companion-windows-amd64.exe`;
+}
+
+function setupCompanionDownloadLinks() {
+  if (companionDlBtn) {
+    companionDlBtn.href = getCompanionDownloadURL();
+    companionDlLabel.textContent = 'Download for Windows';
+  }
+}
+
+// ===== FINE-TUNE STATUS =====
+
+function updateFinetuneStatusUI(data) {
+  if (!data) return;
+  if (data.status === 'idle') {
+    hfFinetuneProgress.classList.add('hidden');
+    hfFinetuneBtn.disabled = false;
+  } else if (data.status === 'complete') {
+    hfFinetuneProgress.classList.remove('hidden');
+    hfFinetuneBar.style.width = '100%';
+    hfFinetuneStatus.textContent = 'Fine-tuning complete! Model updated.';
+    hfFinetuneStatus.style.color = '#BDD164';
+    hfFinetuneStatus.style.animation = 'none';
+    hfFinetuneBtn.disabled = false;
+    setTimeout(() => { hfFinetuneProgress.classList.add('hidden'); }, 5000);
+  } else if (data.status === 'error') {
+    hfFinetuneProgress.classList.remove('hidden');
+    hfFinetuneBar.style.width = '0%';
+    hfFinetuneStatus.textContent = `Error: ${data.error || 'Unknown'}`;
+    hfFinetuneStatus.style.color = '#FF9153';
+    hfFinetuneStatus.style.animation = 'none';
+    hfFinetuneBtn.disabled = false;
+  } else {
+    hfFinetuneProgress.classList.remove('hidden');
+    hfFinetuneBar.style.width = `${data.progress || 0}%`;
+    hfFinetuneStatus.textContent = data.message || data.status;
+    hfFinetuneStatus.style.color = '';
+    hfFinetuneStatus.style.animation = '';
+    hfFinetuneBtn.disabled = true;
+  }
+}
+
+// ===== UI HELPERS =====
 
 function updateCrawlUI(active, domain, pages, queued) {
   if (active) {
@@ -731,7 +1060,6 @@ function updateDatasetBuilderUI(active, data) {
     const phase = data?.phase || 'idle';
     dsPhase.textContent = DS_PHASE_LABELS[phase] || phase;
 
-    // Update stats
     const stats = data?.stats || {};
     dsStatQueries.textContent = stats.queriesGenerated || 0;
     dsStatUrls.textContent = stats.urlsFound || 0;
@@ -849,72 +1177,12 @@ function updateEnhanceStatusUI(data) {
       ? `Enhancing ${data.current}/${data.total} — ${title}`
       : `Enhancing — ${title}`;
   } else if (data.total > 0) {
-    // Just finished
     enhanceStatusDiv.classList.remove('hidden');
     enhanceStatusDiv.classList.add('done');
     enhanceStatusText.textContent = `Enhanced ${data.total} page${data.total > 1 ? 's' : ''}`;
     enhanceDoneTimer = setTimeout(() => { enhanceStatusDiv.classList.add('hidden'); }, 4000);
   } else {
     enhanceStatusDiv.classList.add('hidden');
-  }
-}
-
-// Model options per provider: [value, label]
-const PROVIDER_MODELS = {
-  openai: [
-    ['gpt-5-nano', 'GPT-5 Nano — fastest, cheapest'],
-    ['gpt-5-mini', 'GPT-5 Mini — balanced'],
-    ['gpt-5', 'GPT-5 — full reasoning power'],
-  ],
-  anthropic: [
-    ['claude-haiku-4-5-20251001', 'Claude Haiku 4.5 — fastest, cheapest'],
-    ['claude-sonnet-4-6', 'Claude Sonnet 4.6 — balanced'],
-    ['claude-opus-4-6', 'Claude Opus 4.6 — most intelligent'],
-  ],
-  ollama: [
-    ['llama3.2', 'Llama 3.2 — general purpose'],
-    ['mistral', 'Mistral — fast & capable'],
-    ['phi3', 'Phi-3 — lightweight'],
-    ['deepseek-r1', 'DeepSeek R1 — reasoning'],
-    ['qwen2.5', 'Qwen 2.5 — multilingual'],
-  ],
-  custom: [
-    ['', '(Enter model name below)'],
-  ],
-};
-
-function updateProviderFields() {
-  const provider = providerSelect.value;
-  const savedModel = modelSelect.dataset.savedModel || '';
-
-  customEndpointField.classList.toggle('hidden', provider !== 'custom');
-
-  const placeholders = {
-    openai: 'sk-...',
-    anthropic: 'sk-ant-...',
-    ollama: 'Not required for local',
-    custom: 'Your API key'
-  };
-  apiToken.placeholder = placeholders[provider] || 'API Token';
-
-  if (provider === 'ollama') {
-    apiToken.value = '';
-    apiToken.disabled = true;
-  } else {
-    apiToken.disabled = false;
-  }
-
-  const models = PROVIDER_MODELS[provider] || [];
-  modelSelect.innerHTML = '';
-  for (const [value, label] of models) {
-    const opt = document.createElement('option');
-    opt.value = value;
-    opt.textContent = label;
-    modelSelect.appendChild(opt);
-  }
-
-  if (savedModel && models.some(([v]) => v === savedModel)) {
-    modelSelect.value = savedModel;
   }
 }
 
@@ -1055,164 +1323,6 @@ const HF_PHASE_LABELS = {
   done: 'Upload complete!',
   error: 'Upload failed',
 };
-
-
-function updateVCTierFields() {
-  const tier = vcTierSelect.value;
-  vcOpenaiNotice.classList.toggle('hidden', tier !== 'openai_realtime');
-
-  if (tier === 'openai_realtime') {
-    vcIndStt.querySelector('.vc-dot').nextSibling.textContent = 'Realtime';
-    vcIndLlm.classList.add('hidden');
-  } else {
-    vcIndStt.innerHTML = '<span class="vc-dot"></span>STT';
-    vcIndLlm.classList.remove('hidden');
-  }
-}
-
-function updateVCServiceIndicators(data) {
-  if (data.pinchtab) {
-    vcIndPinchtab.classList.add('connected');
-    vcDownloadBanner.classList.add('hidden');
-    vcMicContainer.classList.remove('hidden');
-  } else {
-    vcIndPinchtab.classList.remove('connected');
-    vcDownloadBanner.classList.remove('hidden');
-    vcMicContainer.classList.add('hidden');
-  }
-
-  const tier = vcTierSelect.value;
-  if (tier === 'local') {
-    vcIndStt.classList.toggle('connected', !!data.whisper);
-    vcIndLlm.classList.toggle('connected', !!data.llamafile);
-  } else if (tier === 'openai_realtime') {
-    vcIndStt.classList.toggle('connected', true);
-  }
-}
-
-function updateVCStatusUI(data) {
-  if (data.listening) {
-    vcMicBtn.classList.add('listening');
-    vcMicBtn.classList.remove('processing');
-    vcMicLabel.textContent = 'Mic active — click to stop';
-    vcPttHint.classList.remove('hidden');
-  } else if (data.processing) {
-    vcMicBtn.classList.remove('listening');
-    vcMicBtn.classList.add('processing');
-    vcMicLabel.textContent = 'Processing...';
-    vcPttHint.classList.add('hidden');
-  } else {
-    vcMicBtn.classList.remove('listening', 'processing');
-    vcMicLabel.textContent = 'Click to enable mic';
-    vcPttHint.classList.add('hidden');
-  }
-}
-
-function appendVCTranscript(entry) {
-  vcTranscript.classList.remove('hidden');
-
-  const div = document.createElement('div');
-  div.className = `vc-msg ${entry.role}`;
-
-  let text = entry.text || '';
-  if (entry.action) {
-    text = `[${entry.action}] ${text}`;
-  }
-
-  const time = new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  div.innerHTML = `${escapeHtml(text)}<span class="vc-msg-time">${time}</span>`;
-
-  vcTranscript.appendChild(div);
-  vcTranscript.scrollTop = vcTranscript.scrollHeight;
-}
-
-
-const COMPANION_REPO = 'thedefaultman/Zahhak-crawler';
-const COMPANION_TAG = 'latest';
-
-function getCompanionDownloadURL(platform) {
-  const base = `https://github.com/${COMPANION_REPO}/releases/${COMPANION_TAG}/download`;
-  const map = {
-    'windows': `${base}/voice-commander-windows-amd64.exe`,
-    'mac-intel': `${base}/voice-commander-darwin-amd64`,
-    'mac-arm': `${base}/voice-commander-darwin-arm64`,
-    'linux': `${base}/voice-commander-linux-amd64`,
-  };
-  return map[platform] || map['windows'];
-}
-
-function detectPlatform() {
-  const ua = navigator.userAgent.toLowerCase();
-  if (ua.includes('win')) return { key: 'windows', label: 'Download for Windows' };
-  if (ua.includes('mac')) {
-    // Can't perfectly detect ARM vs Intel from UA, but Apple Silicon is much more common now
-    return { key: 'mac-arm', label: 'Download for macOS (Apple Silicon)' };
-  }
-  if (ua.includes('linux')) return { key: 'linux', label: 'Download for Linux' };
-  return { key: 'windows', label: 'Download' };
-}
-
-function setupCompanionDownloadLinks() {
-  const platform = detectPlatform();
-
-  if (vcDlRecommended) {
-    vcDlRecommended.href = getCompanionDownloadURL(platform.key);
-    vcDlRecommendedLabel.textContent = platform.label;
-  }
-
-  const platformLinks = document.querySelectorAll('.vc-platform-link');
-  platformLinks.forEach(link => {
-    const plat = link.getAttribute('data-platform');
-    if (plat) {
-      link.href = getCompanionDownloadURL(plat);
-      link.target = '_blank';
-    }
-  });
-}
-
-async function startVCListening() {
-  const tier = vcTierSelect.value;
-
-  try {
-    // All tiers use content script injection (popups can't access getUserMedia)
-    vcMicBtn.classList.add('listening');
-    vcMicLabel.textContent = 'Starting mic...';
-
-    const result = await chrome.runtime.sendMessage({ type: 'VC_REQUEST_MIC', tier });
-    if (result && result.success === false) {
-      throw new Error(result.error || 'Failed to start mic capture');
-    }
-
-    vcListening = true;
-    vcMicLabel.textContent = 'Mic active — click to stop';
-
-    // Show PTT hint for local mode only (OpenAI Realtime uses server VAD)
-    if (tier === 'openai_realtime') {
-      vcPttHint.classList.add('hidden');
-    } else {
-      vcPttHint.classList.remove('hidden');
-    }
-
-    chrome.runtime.sendMessage({ type: 'VC_START_LISTENING', tier });
-  } catch (err) {
-    vcMicBtn.classList.remove('listening', 'processing');
-    vcMicLabel.textContent = 'Click to enable mic';
-    vcPttHint.classList.add('hidden');
-    showToast('Mic error: ' + err.message, 'error');
-  }
-}
-
-function stopVCListening() {
-  vcListening = false;
-
-  chrome.runtime.sendMessage({ type: 'VC_STOP_MIC' });
-
-  vcMicBtn.classList.remove('listening', 'processing');
-  vcMicLabel.textContent = 'Click to enable mic';
-  vcPttHint.classList.add('hidden');
-
-  chrome.runtime.sendMessage({ type: 'VC_STOP_LISTENING' });
-}
 
 function updateHFProgressUI(data) {
   if (data.active) {
