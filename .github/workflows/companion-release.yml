@@ -3,8 +3,8 @@ name: Build & Release Companion App
 on:
   push:
     tags:
-      - 'v*'  # Trigger on version tags like v2.0.0
-  workflow_dispatch:  # Allow manual trigger
+      - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -19,18 +19,27 @@ jobs:
         with:
           go-version: '1.21'
 
-      - name: Build
+      - name: Build companion binary
         working-directory: companion
         env:
           GOOS: windows
           GOARCH: amd64
         run: go build -ldflags="-s -w" -o ../dist/zahhak-companion-windows-amd64.exe .
 
-      - name: Upload artifact
+      - name: Package extension zip
+        run: cd extension && zip -r ../dist/zahhak-extension.zip .
+
+      - name: Upload companion binary
         uses: actions/upload-artifact@v4
         with:
           name: zahhak-companion-windows-amd64.exe
           path: dist/zahhak-companion-windows-amd64.exe
+
+      - name: Upload extension zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: zahhak-extension.zip
+          path: dist/zahhak-extension.zip
 
   release:
     needs: build
@@ -49,25 +58,20 @@ jobs:
           generate_release_notes: true
           files: |
             dist/zahhak-companion-windows-amd64.exe
+            dist/zahhak-extension.zip
           body: |
             ## Zahhak Companion App
 
-            Download and run the companion binary to enable Local mode in the Zahhak extension.
+            Download **`zahhak-companion-windows-amd64.exe`** and run it. That's it.
 
-            | Platform | File |
-            |----------|------|
-            | Windows (x64) | `zahhak-companion-windows-amd64.exe` |
-
-            ### First run
-
-            Just run the binary — it automatically:
+            The companion automatically:
+            - Downloads and installs the Zahhak Chrome extension
+            - Launches Chrome with the extension auto-loaded (your profile, tabs, and logins are preserved)
             - Detects your hardware (CPU, RAM, GPU/VRAM)
-            - Installs Ollama and pulls the best Qwen 3.5 model for your system
-            - Downloads the Vosk speech-to-text model (~40MB) and installs the Python package
-            - Downloads PinchTab for browser automation (~12MB)
+            - Installs Ollama and pulls the best model for your system
+            - Downloads PinchTab for browser automation
             - Connects to Chrome via DevTools Protocol
 
             ### Requirements
             - Windows 10/11 (x64)
             - Chrome browser installed
-            - Python 3.x installed and in PATH ([python.org](https://python.org))
