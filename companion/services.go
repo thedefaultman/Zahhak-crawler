@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// ServiceManager owns the lifecycle of PinchTab (subprocess) and tracks Ollama/Vosk status.
+// ServiceManager owns the lifecycle of PinchTab (subprocess) and tracks Ollama status.
 type ServiceManager struct {
 	config   Config
 	mu       sync.RWMutex
@@ -156,7 +156,7 @@ func (sm *ServiceManager) StopAll() {
 }
 
 // GetStatus returns the status for a named service.
-// For "pinchtab" it uses the managed subprocess. For "ollama" and "vosk" it queries their modules.
+// For "pinchtab" it uses the managed subprocess. For "ollama" it queries its module.
 func (sm *ServiceManager) GetStatus(name string) ServiceStatus {
 	switch name {
 	case "ollama":
@@ -171,9 +171,6 @@ func (sm *ServiceManager) GetStatus(name string) ServiceStatus {
 			return ServiceStatus{Status: "running", Port: 11434}
 		}
 		return ServiceStatus{Status: "stopped", Port: 11434}
-
-	case "vosk":
-		return GetVoskStatus()
 
 	default:
 		// PinchTab and other managed services

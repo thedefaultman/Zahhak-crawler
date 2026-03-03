@@ -1,21 +1,18 @@
 // Mic capture — injected into active tab for Voice Commander.
 // Push-to-talk: hold Right Alt to record, release to send.
-// Captures raw PCM and encodes as WAV for Vosk STT processing.
+// Uses Web Speech API with on-device processing (processLocally).
 
-(async function() {
+(function() {
   if (window.__vcMicActive) {
     chrome.runtime.sendMessage({ type: 'OFFSCREEN_MIC_STARTED' });
     return;
   }
   window.__vcMicActive = true;
 
-  let audioStream = null;
-  let audioContext = null;
-  let scriptNode = null;
-  let pcmChunks = [];
-  let recording = false;
+  let recognition = null;
   let listening = true;
   let keyHeld = false;
+  let pendingText = '';
 
   const PTT_KEY = 'AltRight';
 
@@ -58,16 +55,79 @@
   indicator.textContent = 'Hold Right Alt to talk';
   document.body.appendChild(indicator);
 
+  // --- Web Speech API setup ---
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    chrome.runtime.sendMessage({
+      type: 'OFFSCREEN_MIC_ERROR',
+      error: 'Web Speech API not supported in this browser',
+    });
+    window.__vcMicActive = false;
+    indicator.remove();
+    style.remove();
+    return;
+  }
+
+  recognition = new SpeechRecognition();
+  recognition.lang = 'en-US';
+  recognition.interimResults = false;
+  recognition.continuous = true;
+  recognition.maxAlternatives = 1;
+
+  // Enable on-device processing (Chrome 139+)
+  if ('processLocally' in recognition) {
+    recognition.processLocally = true;
+    console.log('[VoiceCmdr] On-device speech recognition enabled');
+  } else {
+    console.log('[VoiceCmdr] processLocally not available, using cloud recognition');
+  }
+
+  recognition.onresult = (event) => {
+    // Collect all new final results since last check
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      if (event.results[i].isFinal) {
+        const text = event.results[i][0].transcript.trim();
+        if (text) {
+          pendingText += (pendingText ? ' ' : '') + text;
+        }
+      }
+    }
+  };
+
+  recognition.onerror = (event) => {
+    // 'no-speech' and 'aborted' are expected during push-to-talk
+    if (event.error === 'no-speech' || event.error === 'aborted') {
+      console.log('[VoiceCmdr] Recognition:', event.error);
+      return;
+    }
+    console.error('[VoiceCmdr] Speech recognition error:', event.error);
+    chrome.runtime.sendMessage({
+      type: 'OFFSCREEN_MIC_ERROR',
+      error: `Speech recognition error: ${event.error}`,
+    });
+  };
+
+  recognition.onend = () => {
+    // If key is still held, recognition ended unexpectedly — restart it
+    if (keyHeld && listening) {
+      try { recognition.start(); } catch (e) {}
+    }
+  };
+
   // --- Push-to-talk key handlers ---
   document.addEventListener('keydown', (e) => {
     if (e.code !== PTT_KEY || !listening || keyHeld) return;
     e.preventDefault();
     e.stopPropagation();
     keyHeld = true;
-    recording = true;
-    pcmChunks = [];
+    pendingText = '';
     indicator.className = 'recording';
     indicator.textContent = 'Recording...';
+    try {
+      recognition.start();
+    } catch (e) {
+      // Already started — ignore
+    }
   }, true);
 
   document.addEventListener('keyup', (e) => {
@@ -75,159 +135,50 @@
     e.preventDefault();
     e.stopPropagation();
     keyHeld = false;
-    recording = false;
     indicator.className = 'ready';
     indicator.textContent = 'Hold Right Alt to talk';
-    flushAudio();
+    try {
+      recognition.stop();
+    } catch (e) {}
+    // Small delay to let final results arrive before flushing
+    setTimeout(flushText, 300);
   }, true);
 
   // Handle losing focus while key is held (e.g. Alt+Tab)
   window.addEventListener('blur', () => {
     if (keyHeld) {
       keyHeld = false;
-      recording = false;
       indicator.className = 'ready';
       indicator.textContent = 'Hold Right Alt to talk';
-      flushAudio();
+      try { recognition.stop(); } catch (e) {}
+      setTimeout(flushText, 300);
     }
   });
 
-  try {
-    audioStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        channelCount: 1,
-        echoCancellation: true,
-        noiseSuppression: true,
-      }
-    });
+  function flushText() {
+    const text = pendingText.trim();
+    pendingText = '';
+    if (!text) return;
 
-    // Use browser's native sample rate — Vosk handles resampling
-    audioContext = new AudioContext();
-    console.log('[VoiceCmdr] AudioContext sample rate:', audioContext.sampleRate);
-
-    const source = audioContext.createMediaStreamSource(audioStream);
-
-    // Capture raw PCM via ScriptProcessorNode
-    scriptNode = audioContext.createScriptProcessor(4096, 1, 1);
-    source.connect(scriptNode);
-    scriptNode.connect(audioContext.destination);
-
-    scriptNode.onaudioprocess = (e) => {
-      if (!recording) return;
-      const input = e.inputBuffer.getChannelData(0);
-      pcmChunks.push(new Float32Array(input));
-    };
-
-    chrome.runtime.sendMessage({ type: 'OFFSCREEN_MIC_STARTED' });
-    console.log('[VoiceCmdr] Push-to-talk ready. Hold Right Alt to speak.');
-
-  } catch (err) {
+    console.log('[VoiceCmdr] Recognized:', text);
     chrome.runtime.sendMessage({
-      type: 'OFFSCREEN_MIC_ERROR',
-      error: err.message,
+      type: 'VC_TEXT_RESULT',
+      text: text,
     });
-    window.__vcMicActive = false;
-    if (indicator.parentNode) indicator.remove();
-    if (style.parentNode) style.remove();
-  }
-
-  function flushAudio() {
-    if (pcmChunks.length === 0) return;
-
-    const chunks = pcmChunks;
-    pcmChunks = [];
-
-    let totalLength = 0;
-    for (const c of chunks) totalLength += c.length;
-
-    const rate = audioContext ? audioContext.sampleRate : 48000;
-    const minSamples = Math.floor(rate * 0.1); // skip < 0.1s
-    if (totalLength < minSamples) return;
-
-    const samples = new Float32Array(totalLength);
-    let offset = 0;
-    for (const c of chunks) {
-      samples.set(c, offset);
-      offset += c.length;
-    }
-
-    const wavBuffer = encodeWav(samples, rate);
-    const base64 = arrayBufferToBase64(wavBuffer);
-
-    console.log('[VoiceCmdr] Sending WAV:', totalLength, 'samples @', rate, 'Hz,',
-      wavBuffer.byteLength, 'bytes, base64 len:', base64.length);
-
-    chrome.runtime.sendMessage({
-      type: 'VC_AUDIO_CHUNK',
-      audio: base64,
-      mimeType: 'audio/wav',
-    });
-  }
-
-  function arrayBufferToBase64(buffer) {
-    const bytes = new Uint8Array(buffer);
-    const CHUNK = 8192;
-    let binary = '';
-    for (let i = 0; i < bytes.length; i += CHUNK) {
-      const slice = bytes.subarray(i, Math.min(i + CHUNK, bytes.length));
-      binary += String.fromCharCode.apply(null, slice);
-    }
-    return btoa(binary);
-  }
-
-  function encodeWav(samples, sampleRate) {
-    const numChannels = 1;
-    const bitsPerSample = 16;
-    const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
-    const blockAlign = numChannels * (bitsPerSample / 8);
-    const dataSize = samples.length * (bitsPerSample / 8);
-    const buffer = new ArrayBuffer(44 + dataSize);
-    const view = new DataView(buffer);
-
-    function writeStr(off, str) {
-      for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i));
-    }
-
-    writeStr(0, 'RIFF');
-    view.setUint32(4, 36 + dataSize, true);
-    writeStr(8, 'WAVE');
-    writeStr(12, 'fmt ');
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, numChannels, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, byteRate, true);
-    view.setUint16(32, blockAlign, true);
-    view.setUint16(34, bitsPerSample, true);
-    writeStr(36, 'data');
-    view.setUint32(40, dataSize, true);
-
-    for (let i = 0; i < samples.length; i++) {
-      const s = Math.max(-1, Math.min(1, samples[i]));
-      view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-    }
-
-    return buffer;
   }
 
   function stopCapture() {
     listening = false;
-    recording = false;
     keyHeld = false;
     window.__vcMicActive = false;
-    if (scriptNode) {
-      scriptNode.disconnect();
-      scriptNode = null;
-    }
-    if (audioContext) {
-      audioContext.close().catch(() => {});
-      audioContext = null;
-    }
-    if (audioStream) {
-      audioStream.getTracks().forEach(t => t.stop());
-      audioStream = null;
+    if (recognition) {
+      try { recognition.stop(); } catch (e) {}
+      recognition = null;
     }
     if (indicator && indicator.parentNode) indicator.remove();
     if (style && style.parentNode) style.remove();
   }
+
+  chrome.runtime.sendMessage({ type: 'OFFSCREEN_MIC_STARTED' });
+  console.log('[VoiceCmdr] Push-to-talk ready. Hold Right Alt to speak.');
 })();

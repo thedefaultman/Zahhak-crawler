@@ -91,15 +91,7 @@ func main() {
 	// Step 3: Set up Ollama (install if needed, ensure serving, pull model)
 	setupOllama(config.DataDir)
 
-	// Step 4: Set up Vosk STT (download model + auto-install Python package)
-	if !*skipInstall {
-		if err := EnsureVoskReady(config.DataDir); err != nil {
-			log.Printf("Warning: Vosk setup failed: %v", err)
-		}
-	}
-	InitVosk(config.DataDir)
-
-	// Step 5: Auto-detect or restart Chrome with CDP
+	// Step 4: Auto-detect or restart Chrome with CDP
 	if !*noChromeRestart {
 		cdpResult := EnsureChromeCDP()
 		if cdpResult.CDPURL != "" {
@@ -113,13 +105,13 @@ func main() {
 		fmt.Println()
 	}
 
-	// Step 6: Start PinchTab
+	// Step 5: Start PinchTab
 	if err := services.StartPinchTab(); err != nil {
 		log.Printf("Error: Could not start PinchTab: %v", err)
 		log.Println("Try re-running the companion app or check your network connection.")
 	}
 
-	// Step 7: Start health server
+	// Step 6: Start health server
 	go startHealthServer()
 
 	sigChan := make(chan os.Signal, 1)
@@ -179,8 +171,7 @@ func startHealthServer() {
 	mux.HandleFunc("/model/status", corsHandler(handleModelStatus))
 	mux.HandleFunc("/install-local", corsHandler(handleInstallLocal))
 	mux.HandleFunc("/chat", corsHandler(handleChatProxy))
-	mux.HandleFunc("/stt", corsHandler(HandleSTT(config.DataDir)))
-	mux.HandleFunc("/finetune/start", corsHandler(HandleFinetuneStart()))
+mux.HandleFunc("/finetune/start", corsHandler(HandleFinetuneStart()))
 	mux.HandleFunc("/finetune/status", corsHandler(HandleFinetuneStatus()))
 
 	addr := fmt.Sprintf(":%d", config.HealthPort)
@@ -201,7 +192,6 @@ type ServiceStatus struct {
 type HealthResponse struct {
 	PinchTab    ServiceStatus        `json:"pinchtab"`
 	Ollama      ServiceStatus        `json:"ollama"`
-	Vosk        ServiceStatus        `json:"vosk"`
 	Hardware    *HardwareInfo        `json:"hardware,omitempty"`
 	ModelName   string               `json:"modelName,omitempty"`
 	ModelRec    *ModelRecommendation `json:"modelRecommendation,omitempty"`
@@ -216,7 +206,6 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 	resp := HealthResponse{
 		PinchTab:    services.GetStatus("pinchtab"),
 		Ollama:      services.GetStatus("ollama"),
-		Vosk:        services.GetStatus("vosk"),
 		Hardware:    &hwInfo,
 		ModelName:   olStatus.ModelName,
 		ModelRec:    &modelRec,
@@ -267,11 +256,6 @@ func handleInstallLocal(w http.ResponseWriter, r *http.Request) {
 		// Set up Ollama
 		setupOllama(config.DataDir)
 
-		// Set up Vosk (model + Python package)
-		if err := EnsureVoskReady(config.DataDir); err != nil {
-			log.Printf("Warning: Vosk setup failed: %v", err)
-		}
-		InitVosk(config.DataDir)
 	}()
 
 	json.NewEncoder(w).Encode(map[string]string{

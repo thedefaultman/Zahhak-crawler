@@ -27,7 +27,6 @@ const companionDot = document.getElementById('companion-dot');
 const companionConnectionText = document.getElementById('companion-connection-text');
 const companionServices = document.getElementById('companion-services');
 const compIndOllama = document.getElementById('comp-ind-ollama');
-const compIndVosk = document.getElementById('comp-ind-vosk');
 const compIndPinchtab = document.getElementById('comp-ind-pinchtab');
 const companionHardware = document.getElementById('companion-hardware');
 const hwGpu = document.getElementById('hw-gpu');
@@ -840,11 +839,9 @@ function updateCompanionUI(data) {
 
     // Service indicators
     const ollamaOk = data.ollama?.status === 'running';
-    const voskOk = data.vosk?.status === 'running';
     const ptOk = data.pinchtab?.status === 'running';
 
     compIndOllama.classList.toggle('connected', ollamaOk);
-    compIndVosk.classList.toggle('connected', voskOk);
     compIndPinchtab.classList.toggle('connected', ptOk);
 
     // Hardware info
@@ -868,7 +865,6 @@ function updateCompanionUI(data) {
     companionHardware.classList.add('hidden');
 
     compIndOllama.classList.remove('connected');
-    compIndVosk.classList.remove('connected');
     compIndPinchtab.classList.remove('connected');
   }
 }
@@ -886,11 +882,10 @@ function updateVCServiceIndicators(data) {
     vcMicContainer.classList.add('hidden');
   }
 
+  // STT is always available (Web Speech API is built into Chrome)
+  vcIndStt.classList.add('connected');
   if (activeMode === 'local') {
-    vcIndStt.classList.toggle('connected', !!data.vosk);
     vcIndLlm.classList.toggle('connected', !!data.ollama);
-  } else {
-    vcIndStt.classList.toggle('connected', true);
   }
 }
 

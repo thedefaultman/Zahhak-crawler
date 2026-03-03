@@ -357,7 +357,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             sendResponse({
               success: true,
               pinchtab: health.pinchtab?.status === 'running',
-              vosk: health.vosk?.status === 'running',
               ollama: health.ollama?.status === 'running',
               tier: voiceCommanderState.tier,
             });
@@ -366,7 +365,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             sendResponse({
               success: true,
               pinchtab: false,
-              vosk: false,
               ollama: false,
               tier: voiceCommanderState.tier,
             });
@@ -452,14 +450,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse({ success: true });
       break;
 
-    case 'VC_AUDIO_CHUNK':
-      // Route audio to appropriate tier pipeline
+    case 'VC_TEXT_RESULT':
+      // Speech recognition text from Web Speech API — send to LLM pipeline
       (async () => {
         try {
-          await processAudioLocal(msg.audio);
+          await processVoiceText(msg.text);
           sendResponse({ success: true });
         } catch (err) {
-          console.error('[VoiceCommander] Audio processing error:', err);
+          console.error('[VoiceCommander] Text processing error:', err);
           addTranscriptEntry('action', `Error: ${err.message}`, 'error');
           sendResponse({ success: false, error: err.message });
         }
@@ -2351,7 +2349,13 @@ async function ptSnapshot() {
   // filter=interactive: only buttons/links/inputs (~75% fewer nodes)
   // format=compact: ~60% token reduction
   const resp = await ptFetch('/snapshot?filter=interactive&format=compact');
-  return resp.json();
+  const text = await resp.text();
+  // PinchTab may return JSON or Markdown text depending on format
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    return text;
+  }
 }
 
 async function ptAction(kind, ref, extra) {
@@ -2399,7 +2403,12 @@ async function ptEvaluate(expression) {
 
 async function ptText() {
   const resp = await ptFetch('/text');
-  return resp.json();
+  const text = await resp.text();
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    return text;
+  }
 }
 
 async function ptHealthCheck() {
@@ -2593,49 +2602,55 @@ async function executeVCTool(name, args) {
 function getVCSystemPrompt(pageContext) {
   return `You are a voice-controlled browser assistant. The user speaks commands and you execute them using browser tools.
 
-IMPORTANT RULES:
-1. Be concise in your spoken responses — the user is listening to you speak.
+RULES:
+1. Be concise — the user is listening. Keep responses under 2 sentences.
 2. When the user asks to go somewhere, use navigate_to.
-3. Before clicking or typing, use get_snapshot to see what's on the page.
-4. When performing multi-step tasks, explain each step briefly.
-5. If something fails, explain and try an alternative approach.
-6. Keep responses under 2 sentences when possible.
+3. Before clicking or typing, ALWAYS use get_snapshot first to see interactive elements and their ref IDs.
+4. To search on Google or any search engine, use navigate_to with the search URL (e.g. navigate_to with url "https://www.google.com/search?q=your+query"), or use search_web which uses Brave Search.
+5. When performing multi-step tasks, explain each step briefly.
+6. If something fails, try an alternative approach.
+7. The user may refer to previous actions. Use conversation context to understand follow-up commands.
 
-${pageContext ? `CURRENT PAGE CONTEXT:\n${pageContext}\n` : ''}
+AVAILABLE TOOLS (use EXACTLY these names):
 
-You have these browser control tools available. Use them to fulfill the user's requests.`;
+navigate_to — Go to a URL
+  args: { "url": "https://example.com" }
+
+click_element — Click an interactive element by its ref ID from get_snapshot
+  args: { "ref": "a5" }
+
+type_text — Type text into an input field by its ref ID from get_snapshot
+  args: { "ref": "input3", "text": "hello world" }
+
+get_snapshot — Get a list of all interactive elements on the current page (links, buttons, inputs) with their ref IDs. ALWAYS call this before click_element or type_text.
+  args: {}
+
+read_page — Get the full text content of the current page
+  args: {}
+
+scroll_page — Scroll the page up or down
+  args: { "direction": "down" }
+
+go_back — Go back to the previous page
+  args: {}
+
+search_web — Search the web using Brave Search
+  args: { "query": "your search query" }
+
+${pageContext ? `CURRENT PAGE CONTEXT:\n${pageContext}\n` : ''}`;
 }
 
 
-async function processAudioLocal(audioBase64) {
+async function processVoiceText(userText) {
   voiceCommanderState.processing = true;
   broadcastVCStatus();
 
   try {
-    const audioBlob = base64ToBlob(audioBase64, 'audio/wav');
-    console.log('[VoiceCommander] Sending WAV to Vosk STT: base64 len =', audioBase64.length,
-      ', blob size =', audioBlob.size, 'bytes');
-
-    // Send raw WAV binary — companion reads r.Body directly
-    const sttResp = await fetch(`http://127.0.0.1:${voiceCommanderState.companionHealthPort}/stt`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'audio/wav' },
-      body: audioBlob,
-    });
-
-    if (!sttResp.ok) {
-      const errBody = await sttResp.text().catch(() => '');
-      console.error('[VoiceCommander] STT response:', sttResp.status, errBody);
-      throw new Error(`Local STT failed: ${sttResp.status} ${errBody}`);
-    }
-
-    const sttResult = await sttResp.json();
-    const userText = (sttResult.text || '').trim();
-    console.log('[VoiceCommander] STT result:', JSON.stringify(sttResult).substring(0, 300));
-    console.log('[VoiceCommander] Transcribed text:', userText);
+    userText = (userText || '').trim();
+    console.log('[VoiceCommander] Received text:', userText);
 
     if (!userText) {
-      console.log('[VoiceCommander] Empty transcription, skipping');
+      console.log('[VoiceCommander] Empty text, skipping');
       voiceCommanderState.processing = false;
       broadcastVCStatus();
       return;
@@ -2657,9 +2672,13 @@ async function processAudioLocal(audioBase64) {
 
     // Step 3: LLM via Ollama (OpenAI-compatible format)
     const systemPrompt = getVCSystemPrompt(pageContext) +
-      '\n\nIMPORTANT: When you want to use a tool, respond ONLY with the JSON object: {"tool": "tool_name", "args": {...}}. ' +
-      'Do NOT wrap it in code blocks or add any text before or after the JSON. ' +
-      'When you want to speak to the user (no tool needed), respond with plain text only.';
+      '\n\nRESPONSE FORMAT:\n' +
+      'To use a tool, respond with ONLY the JSON object on a single line, nothing else:\n' +
+      '{"tool": "navigate_to", "args": {"url": "https://github.com"}}\n' +
+      '{"tool": "get_snapshot", "args": {}}\n' +
+      '{"tool": "click_element", "args": {"ref": "a5"}}\n' +
+      'To speak to the user (no tool needed), respond with plain text only.\n' +
+      'NEVER wrap JSON in code blocks. NEVER mix text with JSON.';
 
     const messages = [
       { role: 'system', content: systemPrompt },
@@ -2865,26 +2884,6 @@ function addTranscriptEntry(role, text, action) {
   broadcastVCMessage('VC_TRANSCRIPT', { entry });
   broadcastVCStatus();
 }
-
-
-function base64ToBlob(base64, mimeType) {
-  const byteChars = atob(base64);
-  const byteArray = new Uint8Array(byteChars.length);
-  for (let i = 0; i < byteChars.length; i++) {
-    byteArray[i] = byteChars.charCodeAt(i);
-  }
-  return new Blob([byteArray], { type: mimeType });
-}
-
-function arrayBufferToBase64(buffer) {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
-
 
 
 
