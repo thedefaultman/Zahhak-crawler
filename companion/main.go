@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -177,6 +178,7 @@ func startHealthServer() {
 	mux.HandleFunc("/hardware", corsHandler(handleHardware))
 	mux.HandleFunc("/model/status", corsHandler(handleModelStatus))
 	mux.HandleFunc("/install-local", corsHandler(handleInstallLocal))
+	mux.HandleFunc("/chat", corsHandler(handleChatProxy))
 	mux.HandleFunc("/stt", corsHandler(HandleSTT(config.DataDir)))
 	mux.HandleFunc("/finetune/start", corsHandler(HandleFinetuneStart()))
 	mux.HandleFunc("/finetune/status", corsHandler(HandleFinetuneStatus()))
@@ -297,6 +299,30 @@ func autoInstall(dataDir string) error {
 
 	fmt.Println("All required components are ready!")
 	return nil
+}
+
+// handleChatProxy forwards chat completion requests to Ollama, avoiding CORS issues
+// when called from a Chrome extension origin.
+func handleChatProxy(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Forward the request body to Ollama's OpenAI-compatible endpoint
+	resp, err := http.Post(ollamaAPI+"/v1/chat/completions", "application/json", r.Body)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Ollama unreachable: %v", err)})
+		return
+	}
+	defer resp.Body.Close()
+
+	// Copy Ollama's response headers and body back to the client
+	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
 }
 
 func loadOrGenerateToken(path string) string {

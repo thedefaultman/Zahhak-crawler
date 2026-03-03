@@ -748,9 +748,9 @@ async function callAIAPI(systemPrompt, userPrompt) {
 }
 
 async function callLocalLLM(systemPrompt, userPrompt) {
-  // Use Ollama's OpenAI-compatible endpoint
+  // Route through companion proxy to avoid Ollama CORS blocking chrome-extension:// origins
   const model = localModelName || 'qwen3.5:4b';
-  const url = 'http://localhost:11434/v1/chat/completions';
+  const url = 'http://127.0.0.1:9868/chat';
   const headers = { 'Content-Type': 'application/json' };
   const body = {
     model,
@@ -2677,7 +2677,7 @@ async function processAudioLocal(audioBase64) {
       try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 120000); // 2 min timeout
-        chatResp = await fetch('http://localhost:11434/v1/chat/completions', {
+        chatResp = await fetch(`http://127.0.0.1:${voiceCommanderState.companionHealthPort}/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

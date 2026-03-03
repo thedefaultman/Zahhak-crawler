@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	voskModelURL  = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
-	voskModelName = "vosk-model-small-en-us-0.15"
+	voskModelURL  = "https://alphacephei.com/vosk/models/vosk-model-en-us-0.22-lgraph.zip"
+	voskModelName = "vosk-model-en-us-0.22-lgraph"
 )
 
 // VoskStatus holds the current state of the Vosk STT service.
