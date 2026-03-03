@@ -91,9 +91,10 @@ func main() {
 	// Step 3: Set up Ollama (install if needed, ensure serving, pull model)
 	setupOllama(config.DataDir)
 
-	// Step 4: Auto-detect or restart Chrome with CDP
+	// Step 4: Auto-detect or restart Chrome with CDP + extension
+	extensionPath := filepath.Join(config.DataDir, "extension")
 	if !*noChromeRestart {
-		cdpResult := EnsureChromeCDP()
+		cdpResult := EnsureChromeCDP(extensionPath)
 		if cdpResult.CDPURL != "" {
 			config.CDPURL = cdpResult.CDPURL
 			services.SetCDPURL(cdpResult.CDPURL)
@@ -279,6 +280,12 @@ func autoInstall(dataDir string) error {
 			return fmt.Errorf("failed to install PinchTab: %w", err)
 		}
 		fmt.Println("PinchTab installed successfully!")
+	}
+
+	// Install extension if missing
+	if err := InstallExtension(dataDir); err != nil {
+		log.Printf("Warning: Extension install failed: %v", err)
+		log.Println("  The extension can still be loaded manually via chrome://extensions")
 	}
 
 	fmt.Println("All required components are ready!")

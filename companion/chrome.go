@@ -17,7 +17,7 @@ import (
 
 const (
 	cdpProbeTimeout    = 2 * time.Second
-	chromeRestartWait  = 12 * time.Second
+	chromeRestartWait  = 20 * time.Second
 	chromeShutdownWait = 15 * time.Second
 	chromeForceWait    = 5 * time.Second
 	pollInterval       = 300 * time.Millisecond
@@ -36,7 +36,8 @@ type cdpVersionResponse struct {
 }
 
 // EnsureChromeCDP detects or establishes a CDP connection to the user's Chrome.
-func EnsureChromeCDP() CDPResult {
+// If extensionPath is non-empty, Chrome is launched with --load-extension to auto-load it.
+func EnsureChromeCDP(extensionPath string) CDPResult {
 	// Fast path: Chrome is already running with CDP enabled (e.g. from a previous session)
 	if url, err := detectExistingCDP(); err == nil && url != "" {
 		fmt.Println("[Chrome] Already running with DevTools Protocol enabled.")
@@ -48,7 +49,7 @@ func EnsureChromeCDP() CDPResult {
 	fmt.Println("         Your tabs will be restored automatically.")
 	fmt.Println()
 
-	if url, err := restartChromeWithCDP(); err == nil && url != "" {
+	if url, err := restartChromeWithCDP(extensionPath); err == nil && url != "" {
 		fmt.Println("[Chrome] Ready. Connected via DevTools Protocol.")
 		return CDPResult{CDPURL: url, Method: "restarted"}
 	} else {
@@ -80,8 +81,8 @@ func detectExistingCDP() (string, error) {
 }
 
 // restartChromeWithCDP gracefully closes Chrome, relaunches it with CDP enabled,
-// and returns the WebSocket URL.
-func restartChromeWithCDP() (string, error) {
+// auto-loads the extension if extensionPath is provided, and returns the WebSocket URL.
+func restartChromeWithCDP(extensionPath string) (string, error) {
 	chromePath := chromeExecutablePath()
 	if chromePath == "" {
 		return "", fmt.Errorf("Chrome executable not found")
@@ -119,15 +120,21 @@ func restartChromeWithCDP() (string, error) {
 	portFilePath := filepath.Join(userDataDir, "DevToolsActivePort")
 	os.Remove(portFilePath)
 
-	// Phase 3: Launch Chrome with CDP and session restore
+	// Phase 3: Launch Chrome with CDP, session restore, and extension
 	// Pass --profile-directory to skip the profile picker on multi-profile setups
 	fmt.Println("  Launching Chrome with DevTools Protocol...")
 	args := []string{
 		"--remote-debugging-port=0",
 		"--restore-last-session",
+		"--disable-session-crashed-bubble",
+		"--no-first-run",
 	}
 	if activeProfile != "" {
 		args = append(args, "--profile-directory="+activeProfile)
+	}
+	if extensionPath != "" {
+		args = append(args, "--load-extension="+extensionPath)
+		fmt.Printf("  Loading extension from: %s\n", extensionPath)
 	}
 	cmd := exec.Command(chromePath, args...)
 	cmd.Stdout = nil

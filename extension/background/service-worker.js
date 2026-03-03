@@ -2604,12 +2604,13 @@ function getVCSystemPrompt(pageContext) {
 
 RULES:
 1. Be concise — the user is listening. Keep responses under 2 sentences.
-2. When the user asks to go somewhere, use navigate_to.
-3. Before clicking or typing, ALWAYS use get_snapshot first to see interactive elements and their ref IDs.
-4. To search on Google or any search engine, use navigate_to with the search URL (e.g. navigate_to with url "https://www.google.com/search?q=your+query"), or use search_web which uses Brave Search.
-5. When performing multi-step tasks, explain each step briefly.
+2. You can only execute ONE tool per response. Never chain multiple tools in a single message.
+3. PREFER click_element over navigate_to when the target is already visible on the page. If the user says "go to page 10" and you can see a "Page 10" link in the snapshot, click it instead of constructing a URL.
+4. Before clicking or typing, check if you already have a recent snapshot. If so, use it. Only call get_snapshot if you don't know what's on the page.
+5. To search the web, use search_web. Only use navigate_to for direct URLs the user explicitly states.
 6. If something fails, try an alternative approach.
 7. The user may refer to previous actions. Use conversation context to understand follow-up commands.
+8. If the user asks you to do something continuously ("keep scrolling", "scroll until I say stop"), perform the action ONCE and tell them you did it. They will ask again if they want more.
 
 AVAILABLE TOOLS (use EXACTLY these names):
 
@@ -2702,7 +2703,7 @@ async function processVoiceText(userText) {
           body: JSON.stringify({
             model: localModelName || 'qwen3.5:4b',
             messages,
-            max_tokens: 150,
+            max_tokens: 300,
             temperature: 0.2,
           }),
           signal: controller.signal,

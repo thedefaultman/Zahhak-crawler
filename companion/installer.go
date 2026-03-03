@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"fmt"
 	"io"
 	"log"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 // DownloadURLs contains per-platform binary download URLs keyed by service name.
@@ -113,4 +115,93 @@ func downloadFile(url string, destPath string) error {
 
 	out.Close()
 	return os.Rename(tmpPath, destPath)
+}
+
+// ExtensionDownloadURL is the URL for the Zahhak extension zip (platform-independent).
+var ExtensionDownloadURL = "https://github.com/thedefaultman/Zahhak-crawler/releases/latest/download/zahhak-extension.zip"
+
+// InstallExtension downloads and extracts the Zahhak Chrome extension.
+func InstallExtension(dataDir string) error {
+	extDir := filepath.Join(dataDir, "extension")
+	manifestPath := filepath.Join(extDir, "manifest.json")
+
+	// Skip if already installed
+	if _, err := os.Stat(manifestPath); err == nil {
+		log.Println("[Extension] Already installed")
+		return nil
+	}
+
+	zipPath := filepath.Join(dataDir, "extension.zip")
+
+	log.Printf("[Extension] Downloading from %s...", ExtensionDownloadURL)
+	if err := downloadFile(ExtensionDownloadURL, zipPath); err != nil {
+		return fmt.Errorf("failed to download extension: %w", err)
+	}
+
+	log.Println("[Extension] Extracting...")
+	if err := os.MkdirAll(extDir, 0755); err != nil {
+		return fmt.Errorf("cannot create extension directory: %w", err)
+	}
+
+	if err := extractZip(zipPath, extDir); err != nil {
+		return fmt.Errorf("failed to extract extension: %w", err)
+	}
+
+	// Clean up zip
+	os.Remove(zipPath)
+
+	// Verify manifest exists after extraction
+	if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
+		return fmt.Errorf("extension extraction succeeded but manifest.json not found")
+	}
+
+	log.Printf("[Extension] Installed to %s", extDir)
+	return nil
+}
+
+// extractZip extracts a zip archive to the destination directory.
+func extractZip(zipPath string, destDir string) error {
+	r, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+
+	for _, f := range r.File {
+		// Sanitize path to prevent zip slip attacks
+		name := filepath.FromSlash(f.Name)
+		if strings.Contains(name, "..") {
+			continue
+		}
+
+		target := filepath.Join(destDir, name)
+
+		if f.FileInfo().IsDir() {
+			os.MkdirAll(target, 0755)
+			continue
+		}
+
+		// Ensure parent directory exists
+		os.MkdirAll(filepath.Dir(target), 0755)
+
+		outFile, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+		if err != nil {
+			return err
+		}
+
+		rc, err := f.Open()
+		if err != nil {
+			outFile.Close()
+			return err
+		}
+
+		_, err = io.Copy(outFile, rc)
+		rc.Close()
+		outFile.Close()
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
