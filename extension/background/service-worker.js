@@ -2615,13 +2615,12 @@ async function processAudioLocal(audioBase64) {
     const audioBlob = base64ToBlob(audioBase64, 'audio/wav');
     console.log('[VoiceCommander] Sending WAV to Vosk STT: base64 len =', audioBase64.length,
       ', blob size =', audioBlob.size, 'bytes');
-    const formData = new FormData();
-    formData.append('file', audioBlob, 'audio.wav');
 
-    // Use companion's built-in Vosk STT endpoint
+    // Send raw WAV binary — companion reads r.Body directly
     const sttResp = await fetch(`http://127.0.0.1:${voiceCommanderState.companionHealthPort}/stt`, {
       method: 'POST',
-      body: formData,
+      headers: { 'Content-Type': 'audio/wav' },
+      body: audioBlob,
     });
 
     if (!sttResp.ok) {

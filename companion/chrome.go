@@ -92,6 +92,12 @@ func restartChromeWithCDP() (string, error) {
 		return "", fmt.Errorf("cannot determine Chrome user data directory")
 	}
 
+	// Detect active profile before shutdown so we can relaunch the right one
+	activeProfile := detectActiveProfile(userDataDir)
+	if activeProfile != "" {
+		fmt.Printf("  Detected active profile: %s\n", activeProfile)
+	}
+
 	// Phase 1: If Chrome is running, shut it down gracefully
 	if isChromeRunning() {
 		fmt.Println("  Closing Chrome gracefully (saving your session)...")
@@ -114,11 +120,16 @@ func restartChromeWithCDP() (string, error) {
 	os.Remove(portFilePath)
 
 	// Phase 3: Launch Chrome with CDP and session restore
+	// Pass --profile-directory to skip the profile picker on multi-profile setups
 	fmt.Println("  Launching Chrome with DevTools Protocol...")
-	cmd := exec.Command(chromePath,
+	args := []string{
 		"--remote-debugging-port=0",
 		"--restore-last-session",
-	)
+	}
+	if activeProfile != "" {
+		args = append(args, "--profile-directory="+activeProfile)
+	}
+	cmd := exec.Command(chromePath, args...)
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 
@@ -311,4 +322,40 @@ func waitForDevToolsActivePort(userDataDir string, timeout time.Duration) (int, 
 		time.Sleep(pollInterval)
 	}
 	return 0, fmt.Errorf("timed out waiting for Chrome to write DevToolsActivePort")
+}
+
+// detectActiveProfile finds the most recently used Chrome profile directory.
+// Chrome stores profiles as "Default", "Profile 1", "Profile 2", etc.
+// We pick the one whose Preferences file was most recently modified.
+func detectActiveProfile(userDataDir string) string {
+	entries, err := os.ReadDir(userDataDir)
+	if err != nil {
+		return ""
+	}
+
+	var bestProfile string
+	var bestTime time.Time
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if name != "Default" && !strings.HasPrefix(name, "Profile ") {
+			continue
+		}
+
+		// Check the Preferences file — Chrome updates it on every use
+		prefsPath := filepath.Join(userDataDir, name, "Preferences")
+		info, err := os.Stat(prefsPath)
+		if err != nil {
+			continue
+		}
+		if info.ModTime().After(bestTime) {
+			bestTime = info.ModTime()
+			bestProfile = name
+		}
+	}
+
+	return bestProfile
 }

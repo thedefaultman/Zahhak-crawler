@@ -207,8 +207,10 @@ func PullModel(model string) error {
 		return fmt.Errorf("pull failed: HTTP %d — %s", resp.StatusCode, string(respBody))
 	}
 
-	// Stream progress
+	// Stream progress — log once per 10% threshold per layer
 	decoder := json.NewDecoder(resp.Body)
+	lastLoggedPct := -1
+	lastStatus := ""
 	for decoder.More() {
 		var progress struct {
 			Status    string `json:"status"`
@@ -218,12 +220,22 @@ func PullModel(model string) error {
 		if err := decoder.Decode(&progress); err != nil {
 			break
 		}
+		// Reset threshold when a new layer starts
+		if progress.Status != lastStatus {
+			lastLoggedPct = -1
+			lastStatus = progress.Status
+		}
 		if progress.Total > 0 {
 			pct := int(progress.Completed * 100 / progress.Total)
 			ollamaState.PullPct = pct
-			if pct%10 == 0 {
+			logAt := (pct / 10) * 10
+			if logAt > lastLoggedPct {
 				log.Printf("[Ollama] Pull progress: %d%% (%s)", pct, progress.Status)
+				lastLoggedPct = logAt
 			}
+		} else if progress.Status != "" && lastLoggedPct == -1 {
+			log.Printf("[Ollama] %s", progress.Status)
+			lastLoggedPct = 0
 		}
 	}
 
