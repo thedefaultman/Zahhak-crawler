@@ -37,7 +37,6 @@ func main() {
 	healthPort := flag.Int("health-port", 9868, "Health check API port")
 	dataDir := flag.String("data-dir", "", "Directory for downloaded binaries and models")
 	skipInstall := flag.Bool("skip-install", false, "Skip automatic download of missing binaries")
-	noChromeRestart := flag.Bool("no-chrome-restart", false, "Do not automatically restart Chrome with DevTools Protocol")
 	flag.Parse()
 
 	if *dataDir == "" {
@@ -91,20 +90,18 @@ func main() {
 	// Step 3: Set up Ollama (install if needed, ensure serving, pull model)
 	setupOllama(config.DataDir)
 
-	// Step 4: Auto-detect or restart Chrome with CDP + extension
+	// Step 4: Launch dedicated Chrome with extension + CDP
 	extensionPath := filepath.Join(config.DataDir, "extension")
-	if !*noChromeRestart {
-		cdpResult := EnsureChromeCDP(extensionPath)
-		if cdpResult.CDPURL != "" {
-			config.CDPURL = cdpResult.CDPURL
-			services.SetCDPURL(cdpResult.CDPURL)
-			fmt.Printf("CDP URL:      %s\n", config.CDPURL)
-		}
-		if cdpResult.Method == "fallback" {
-			fmt.Println("Note: PinchTab will use its own browser window.")
-		}
-		fmt.Println()
+	cdpResult := LaunchDedicatedChrome(extensionPath, config.DataDir)
+	if cdpResult.CDPURL != "" {
+		config.CDPURL = cdpResult.CDPURL
+		services.SetCDPURL(cdpResult.CDPURL)
+		fmt.Printf("CDP URL:      %s\n", config.CDPURL)
+	} else {
+		log.Printf("Warning: Could not launch Chrome: %v", cdpResult.Error)
+		fmt.Println("PinchTab will use its own browser window (extension may not be loaded).")
 	}
+	fmt.Println()
 
 	// Step 5: Start PinchTab
 	if err := services.StartPinchTab(); err != nil {
@@ -123,6 +120,7 @@ func main() {
 
 	fmt.Println("\nShutting down...")
 	services.StopAll()
+	StopDedicatedChrome()
 	fmt.Println("Goodbye!")
 }
 
