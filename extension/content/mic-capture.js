@@ -2,7 +2,7 @@
 // Push-to-talk: hold Right Alt to record, release to send.
 // Uses Web Speech API with on-device processing (processLocally).
 
-(function() {
+(async function() {
   if (window.__vcMicActive) {
     chrome.runtime.sendMessage({ type: 'OFFSCREEN_MIC_STARTED' });
     return;
@@ -13,8 +13,10 @@
   let listening = true;
   let keyHeld = false;
   let pendingText = '';
+  let useLocalProcessing = false;
 
   const PTT_KEY = 'AltRight';
+  const LANG = 'en-US';
 
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg.type === 'CONTENT_STOP_MIC') {
@@ -46,13 +48,18 @@
       animation: __vc-pulse 1s ease-in-out infinite;
       opacity: 1;
     }
+    #__vc-ptt-indicator.installing {
+      background: #2563eb; color: white;
+      animation: __vc-pulse 1.5s ease-in-out infinite;
+      opacity: 1;
+    }
   `;
   document.documentElement.appendChild(style);
 
   const indicator = document.createElement('div');
   indicator.id = '__vc-ptt-indicator';
   indicator.className = 'ready';
-  indicator.textContent = 'Hold Right Alt to talk';
+  indicator.textContent = 'Initializing speech...';
   document.body.appendChild(indicator);
 
   // --- Web Speech API setup ---
@@ -68,18 +75,51 @@
     return;
   }
 
+  // Check if on-device language pack is available, install if needed
+  if (typeof SpeechRecognition.available === 'function') {
+    try {
+      const status = await SpeechRecognition.available({
+        langs: [LANG],
+        processLocally: true,
+      });
+      console.log('[VoiceCmdr] On-device STT availability:', status);
+
+      if (status === 'available') {
+        useLocalProcessing = true;
+      } else if (status === 'downloadable' || status === 'downloading') {
+        // Install the language pack
+        indicator.className = 'installing';
+        indicator.textContent = 'Installing speech pack...';
+        console.log('[VoiceCmdr] Installing on-device language pack for', LANG);
+
+        const installed = await SpeechRecognition.install({ langs: [LANG] });
+        if (installed) {
+          useLocalProcessing = true;
+          console.log('[VoiceCmdr] Language pack installed successfully');
+        } else {
+          console.warn('[VoiceCmdr] Language pack install failed, falling back to cloud STT');
+        }
+      } else {
+        console.log('[VoiceCmdr] On-device STT unavailable for', LANG, '— using cloud STT');
+      }
+    } catch (e) {
+      console.warn('[VoiceCmdr] Error checking on-device availability:', e.message);
+    }
+  } else {
+    console.log('[VoiceCmdr] SpeechRecognition.available() not supported');
+  }
+
   recognition = new SpeechRecognition();
-  recognition.lang = 'en-US';
+  recognition.lang = LANG;
   recognition.interimResults = false;
   recognition.continuous = true;
   recognition.maxAlternatives = 1;
 
-  // Enable on-device processing (Chrome 139+)
-  if ('processLocally' in recognition) {
+  if (useLocalProcessing && 'processLocally' in recognition) {
     recognition.processLocally = true;
     console.log('[VoiceCmdr] On-device speech recognition enabled');
   } else {
-    console.log('[VoiceCmdr] processLocally not available, using cloud recognition');
+    console.log('[VoiceCmdr] Using cloud speech recognition');
   }
 
   recognition.onresult = (event) => {
@@ -179,6 +219,8 @@
     if (style && style.parentNode) style.remove();
   }
 
+  indicator.className = 'ready';
+  indicator.textContent = 'Hold Right Alt to talk';
   chrome.runtime.sendMessage({ type: 'OFFSCREEN_MIC_STARTED' });
-  console.log('[VoiceCmdr] Push-to-talk ready. Hold Right Alt to speak.');
+  console.log('[VoiceCmdr] Push-to-talk ready (local:', useLocalProcessing, '). Hold Right Alt to speak.');
 })();
