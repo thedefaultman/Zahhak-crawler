@@ -106,61 +106,98 @@ func detectRAM() int {
 	return int(memStatus.TotalPhys / 1024 / 1024)
 }
 
-// detectCPUName reads the CPU model name via wmic on Windows.
+// detectCPUName reads the CPU model name. Uses PowerShell Get-CimInstance (Windows 10/11),
+// falls back to wmic for older systems.
 func detectCPUName() string {
 	if runtime.GOOS != "windows" {
 		return "unknown"
 	}
 
-	cmd := exec.Command("wmic", "cpu", "get", "name", "/value")
+	// Primary: PowerShell Get-CimInstance (works on all modern Windows)
+	cmd := exec.Command("powershell", "-NoProfile", "-Command",
+		"Get-CimInstance Win32_Processor | Select-Object -ExpandProperty Name")
 	output, err := cmd.Output()
-	if err != nil {
-		return "unknown"
-	}
-
-	for _, line := range strings.Split(string(output), "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "Name=") {
-			return strings.TrimPrefix(line, "Name=")
+	if err == nil {
+		name := strings.TrimSpace(string(output))
+		if name != "" {
+			return name
 		}
 	}
+
+	// Fallback: wmic (removed in newer Windows 11 builds)
+	cmd = exec.Command("wmic", "cpu", "get", "name", "/value")
+	output, err = cmd.Output()
+	if err == nil {
+		for _, line := range strings.Split(string(output), "\n") {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "Name=") {
+				return strings.TrimPrefix(line, "Name=")
+			}
+		}
+	}
+
 	return "unknown"
 }
 
-// detectGPU reads GPU name and VRAM from wmic, with nvidia-smi fallback for accurate VRAM.
+// detectGPU reads GPU name and VRAM. Uses PowerShell Get-CimInstance with nvidia-smi
+// for accurate VRAM on NVIDIA GPUs.
 func detectGPU() (string, int) {
 	if runtime.GOOS != "windows" {
-		return "unknown", 0
-	}
-
-	cmd := exec.Command("wmic", "path", "win32_videocontroller", "get", "name,adapterram", "/value")
-	output, err := cmd.Output()
-	if err != nil {
 		return "unknown", 0
 	}
 
 	var gpuName string
 	var vramBytes int64
 
-	for _, line := range strings.Split(string(output), "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "Name=") {
-			name := strings.TrimPrefix(line, "Name=")
-			if gpuName == "" || isDiscreteGPU(name) {
-				gpuName = name
+	// Primary: PowerShell Get-CimInstance
+	cmd := exec.Command("powershell", "-NoProfile", "-Command",
+		"Get-CimInstance Win32_VideoController | ForEach-Object { Write-Output \"Name=$($_.Name)\"; Write-Output \"AdapterRAM=$($_.AdapterRAM)\" }")
+	output, err := cmd.Output()
+	if err == nil {
+		for _, line := range strings.Split(string(output), "\n") {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "Name=") {
+				name := strings.TrimPrefix(line, "Name=")
+				if gpuName == "" || isDiscreteGPU(name) {
+					gpuName = name
+				}
+			}
+			if strings.HasPrefix(line, "AdapterRAM=") {
+				val := strings.TrimPrefix(line, "AdapterRAM=")
+				val = strings.TrimSpace(val)
+				if v, err := strconv.ParseInt(val, 10, 64); err == nil && v > vramBytes {
+					vramBytes = v
+				}
 			}
 		}
-		if strings.HasPrefix(line, "AdapterRAM=") {
-			val := strings.TrimPrefix(line, "AdapterRAM=")
-			if v, err := strconv.ParseInt(val, 10, 64); err == nil && v > vramBytes {
-				vramBytes = v
+	}
+
+	// Fallback: wmic (for older Windows)
+	if gpuName == "" {
+		cmd = exec.Command("wmic", "path", "win32_videocontroller", "get", "name,adapterram", "/value")
+		output, err = cmd.Output()
+		if err == nil {
+			for _, line := range strings.Split(string(output), "\n") {
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, "Name=") {
+					name := strings.TrimPrefix(line, "Name=")
+					if gpuName == "" || isDiscreteGPU(name) {
+						gpuName = name
+					}
+				}
+				if strings.HasPrefix(line, "AdapterRAM=") {
+					val := strings.TrimPrefix(line, "AdapterRAM=")
+					if v, err := strconv.ParseInt(val, 10, 64); err == nil && v > vramBytes {
+						vramBytes = v
+					}
+				}
 			}
 		}
 	}
 
 	vramMB := int(vramBytes / 1024 / 1024)
 
-	// wmic sometimes reports wrong VRAM. Try nvidia-smi for NVIDIA GPUs.
+	// nvidia-smi gives accurate VRAM (WMI AdapterRAM is a 32-bit field, caps at ~4GB)
 	if strings.Contains(strings.ToLower(gpuName), "nvidia") {
 		if nvidiaVRAM := detectNvidiaVRAM(); nvidiaVRAM > 0 {
 			vramMB = nvidiaVRAM

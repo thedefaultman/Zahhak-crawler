@@ -17,8 +17,9 @@ import (
 
 const (
 	cdpProbeTimeout    = 2 * time.Second
-	chromeRestartWait  = 8 * time.Second
-	chromeShutdownWait = 5 * time.Second
+	chromeRestartWait  = 12 * time.Second
+	chromeShutdownWait = 15 * time.Second
+	chromeForceWait    = 5 * time.Second
 	pollInterval       = 300 * time.Millisecond
 )
 
@@ -98,7 +99,12 @@ func restartChromeWithCDP() (string, error) {
 			log.Printf("  Warning: graceful shutdown signal returned: %v", err)
 		}
 		if !waitForChromeExit(chromeShutdownWait) {
-			return "", fmt.Errorf("Chrome did not exit within %s", chromeShutdownWait)
+			// Graceful close timed out — force kill as last resort
+			fmt.Println("  Chrome is still running — force closing...")
+			forceChromeShutdown()
+			if !waitForChromeExit(chromeForceWait) {
+				return "", fmt.Errorf("Chrome did not exit after force close")
+			}
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
@@ -267,6 +273,19 @@ func gracefulChromeShutdown() error {
 	}
 
 	return cmd.Run()
+}
+
+// forceChromeShutdown force-kills Chrome when graceful shutdown times out.
+// On Windows: taskkill /F /IM chrome.exe
+func forceChromeShutdown() {
+	switch runtime.GOOS {
+	case "windows":
+		exec.Command("taskkill", "/F", "/IM", "chrome.exe").Run()
+	case "darwin":
+		exec.Command("pkill", "-KILL", "Google Chrome").Run()
+	case "linux":
+		exec.Command("pkill", "-KILL", "chrome").Run()
+	}
 }
 
 // waitForChromeExit polls until Chrome processes have exited or timeout is reached.

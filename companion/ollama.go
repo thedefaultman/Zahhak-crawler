@@ -14,9 +14,9 @@ import (
 )
 
 const (
-	ollamaAPI        = "http://localhost:11434"
-	ollamaSetupURL   = "https://ollama.com/download/OllamaSetup.exe"
-	ollamaStartWait  = 15 * time.Second
+	ollamaAPI       = "http://localhost:11434"
+	ollamaSetupURL  = "https://ollama.com/download/OllamaSetup.exe"
+	ollamaStartWait = 15 * time.Second
 )
 
 // OllamaStatus holds the current state of the Ollama service.
@@ -31,10 +31,40 @@ type OllamaStatus struct {
 
 var ollamaState = OllamaStatus{}
 
-// IsOllamaInstalled checks if the ollama binary is in PATH.
+// ollamaExePath returns the path to the ollama binary, checking known install
+// locations since the current process may not have an updated PATH.
+func ollamaExePath() string {
+	// Check PATH first
+	if p, err := exec.LookPath("ollama"); err == nil {
+		return p
+	}
+
+	// Known Windows install location (OllamaSetup.exe installs here)
+	home, _ := os.UserHomeDir()
+	if home != "" {
+		candidate := filepath.Join(home, "AppData", "Local", "Programs", "Ollama", "ollama.exe")
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+
+	// Also check Program Files
+	for _, envVar := range []string{"PROGRAMFILES", "LOCALAPPDATA"} {
+		dir := os.Getenv(envVar)
+		if dir != "" {
+			candidate := filepath.Join(dir, "Ollama", "ollama.exe")
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate
+			}
+		}
+	}
+
+	return ""
+}
+
+// IsOllamaInstalled checks if the ollama binary exists.
 func IsOllamaInstalled() bool {
-	_, err := exec.LookPath("ollama")
-	return err == nil
+	return ollamaExePath() != ""
 }
 
 // InstallOllama downloads and runs OllamaSetup.exe silently.
@@ -62,16 +92,16 @@ func InstallOllama(dataDir string) error {
 	// Clean up installer
 	os.Remove(setupPath)
 
-	// Wait for ollama to be available in PATH
+	// Wait for ollama to be available (check known paths, not just PATH)
 	for i := 0; i < 10; i++ {
 		if IsOllamaInstalled() {
-			log.Println("[Ollama] Installed successfully")
+			log.Printf("[Ollama] Installed successfully at %s", ollamaExePath())
 			return nil
 		}
 		time.Sleep(1 * time.Second)
 	}
 
-	return fmt.Errorf("ollama not found in PATH after installation")
+	return fmt.Errorf("ollama not found after installation")
 }
 
 // IsOllamaServing checks if the Ollama API is responding.
@@ -91,8 +121,13 @@ func EnsureOllamaServing() error {
 		return nil
 	}
 
-	log.Println("[Ollama] Starting Ollama serve...")
-	cmd := exec.Command("ollama", "serve")
+	ollamaPath := ollamaExePath()
+	if ollamaPath == "" {
+		return fmt.Errorf("ollama binary not found")
+	}
+
+	log.Printf("[Ollama] Starting Ollama serve (%s)...", ollamaPath)
+	cmd := exec.Command(ollamaPath, "serve")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
@@ -136,7 +171,6 @@ func IsModelPulled(model string) bool {
 		return false
 	}
 
-	// Normalize model name for comparison (e.g. "qwen3.5:4b" matches "qwen3.5:4b")
 	for _, m := range tags.Models {
 		if m.Name == model || strings.HasPrefix(m.Name, model) {
 			return true
@@ -145,7 +179,7 @@ func IsModelPulled(model string) bool {
 	return false
 }
 
-// PullModel pulls a model from the Ollama registry. This can take a while for large models.
+// PullModel pulls a model from the Ollama registry.
 func PullModel(model string) error {
 	if IsModelPulled(model) {
 		log.Printf("[Ollama] Model %s is already available", model)
@@ -161,7 +195,6 @@ func PullModel(model string) error {
 
 	log.Printf("[Ollama] Pulling model %s...", model)
 
-	// Use the Ollama API for pull with streaming progress
 	body := fmt.Sprintf(`{"name":"%s","stream":true}`, model)
 	resp, err := http.Post(ollamaAPI+"/api/pull", "application/json", strings.NewReader(body))
 	if err != nil {
@@ -194,7 +227,6 @@ func PullModel(model string) error {
 		}
 	}
 
-	// Verify the model is now available
 	if !IsModelPulled(model) {
 		return fmt.Errorf("model %s not found after pull", model)
 	}

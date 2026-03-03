@@ -229,32 +229,72 @@ func transcribeWithVosk(dataDir string, audioPath string) (string, error) {
 		return "", fmt.Errorf("Python not found")
 	}
 
+	// Use forward slashes to avoid Python raw string issues with trailing backslash
+	modelPathFwd := strings.ReplaceAll(modelPath, "\\", "/")
+	audioPathFwd := strings.ReplaceAll(audioPath, "\\", "/")
+
 	pythonScript := fmt.Sprintf(`
-import sys, json, wave
+import sys, json, wave, struct
 from vosk import Model, KaldiRecognizer
-model = Model(r"%s")
-wf = wave.open(r"%s", "rb")
-rec = KaldiRecognizer(model, wf.getframerate())
+
+model = Model("%s")
+wf = wave.open("%s", "rb")
+
+# Vosk requires 16kHz mono 16-bit PCM — resample if needed
+sample_rate = wf.getframerate()
+n_channels = wf.getnchannels()
+sampwidth = wf.getsampwidth()
+
+raw_data = wf.readframes(wf.getnframes())
+wf.close()
+
+# Convert stereo to mono if needed
+if n_channels == 2:
+    samples = struct.unpack("<%dh" %% (len(raw_data) // 2), raw_data)
+    mono = []
+    for i in range(0, len(samples), 2):
+        mono.append((samples[i] + samples[i+1]) // 2)
+    raw_data = struct.pack("<%dh" %% len(mono), *mono)
+    n_channels = 1
+
+# Simple nearest-neighbor resample to 16000 Hz if needed
+if sample_rate != 16000:
+    samples = struct.unpack("<%dh" %% (len(raw_data) // 2), raw_data)
+    ratio = sample_rate / 16000.0
+    new_len = int(len(samples) / ratio)
+    resampled = [samples[int(i * ratio)] for i in range(new_len)]
+    raw_data = struct.pack("<%dh" %% len(resampled), *resampled)
+    sample_rate = 16000
+
+rec = KaldiRecognizer(model, sample_rate)
 rec.SetWords(False)
+
 results = []
-while True:
-    data = wf.readframes(4000)
-    if len(data) == 0:
-        break
-    if rec.AcceptWaveform(data):
+chunk_size = 8000  # 4000 samples * 2 bytes
+for i in range(0, len(raw_data), chunk_size):
+    chunk = raw_data[i:i+chunk_size]
+    if rec.AcceptWaveform(chunk):
         r = json.loads(rec.Result())
         if r.get("text"):
             results.append(r["text"])
+
 final = json.loads(rec.FinalResult())
 if final.get("text"):
     results.append(final["text"])
+
 print(" ".join(results))
-`, modelPath, audioPath)
+`, modelPathFwd, audioPathFwd)
 
 	cmd := exec.Command(pyCmd, "-c", pythonScript)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
 	output, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("vosk transcription failed: %w", err)
+		errMsg := stderr.String()
+		if errMsg != "" {
+			log.Printf("[Vosk] Python stderr: %s", errMsg)
+		}
+		return "", fmt.Errorf("vosk transcription failed: %w (stderr: %s)", err, errMsg)
 	}
 
 	return strings.TrimSpace(string(output)), nil
